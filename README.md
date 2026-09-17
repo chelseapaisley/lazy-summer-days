@@ -8,7 +8,7 @@ Not a metaphor: a top-down, ambient browser animation of a backyard pool. Water 
 
 ## Why this exists
 
-I'd already been putting AI to real use — automating the boring parts of getting a PM, digging through the codebase in Cursor, scripting my way out of busywork. Then an animated koi pond scrolled past on LinkedIn and something clicked: this could make something *beautiful* too, not just efficient. It was the start of summer, I was already nostalgic for long lazy pool days, and that was enough of an excuse. I decided to just make it real.
+I'd already been putting AI to real use — automating the boring parts of getting a PM, digging through the codebase in Cursor, scripting my way out of busywork. Then an [animated koi pond](https://www.linkedin.com/posts/riu-fukazawa-a2277a21b_i-built-a-koi-pond-on-the-internet-and-you-activity-7464804999248711681-MRxJ) scrolled past on LinkedIn and something clicked: this could make something simple and beautiful too, not just efficient. It was the start of summer, I was already nostalgic for long lazy pool days, and that was enough of an excuse. I decided to just make it real.
 
 I could describe the target with total precision: stylised but grounded, not photorealistic, not cartoon, somewhere between a graphic poster and a memory you're not sure is real. What I couldn't do was write a Worley-noise caustic shader myself. So I didn't. I wrote the brief the way I'd brief an engineer, then kept sending it back until the details actually held: water that looked alive instead of like a screensaver, a bite that looked torn instead of erased.
 
