@@ -1,0 +1,2733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chelsea Paisley</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:100%; height:100%; overflow:hidden; background:#086b8e; }
+canvas { display:block; width:100%; height:100%; }
+
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function rand(a,b){ return a + secureRandom()*(b-a); }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function secureRandom() {
+  if (window.crypto && crypto.getRandomValues) {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0] / 4294967296;
+  }
+  return Math.random();
+}
+
+function drawValve(ctx, cx, cy, r, va) {
+  const vl = r*0.14;
+  const vdx = Math.cos(va), vdy = Math.sin(va);
+  const vx = cx + r*vdx, vy = cy + r*vdy;
+  const vpx = -vdy, vpy = vdx, hw = r*0.036;
+  const corners = [
+    [vx+vpx*hw, vy+vpy*hw],
+    [vx+vdx*vl+vpx*hw, vy+vdy*vl+vpy*hw],
+    [vx+vdx*vl-vpx*hw, vy+vdy*vl-vpy*hw],
+    [vx-vpx*hw, vy-vpy*hw],
+  ];
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(corners[0][0],corners[0][1]);
+  corners.forEach(c=>ctx.lineTo(c[0],c[1])); ctx.closePath();
+  ctx.fillStyle='rgba(225,228,232,0.84)'; ctx.fill();
+  ctx.fillStyle='rgba(185,188,196,0.90)';
+  ctx.beginPath(); ctx.arc(vx+vdx*(vl-r*0.022), vy+vdy*(vl-r*0.022), r*0.026, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+function drawValveShadow(ctx, cx, cy, r, va) {
+  const vl = r*0.14;
+  const vdx = Math.cos(va), vdy = Math.sin(va);
+  const svx = cx + r*vdx, svy = cy + r*vdy;
+  const vpx = -vdy, vpy = vdx, hw = r*0.036;
+  ctx.beginPath();
+  ctx.moveTo(svx+vpx*hw, svy+vpy*hw);
+  ctx.lineTo(svx+vdx*vl+vpx*hw, svy+vdy*vl+vpy*hw);
+  ctx.lineTo(svx+vdx*vl-vpx*hw, svy+vdy*vl-vpy*hw);
+  ctx.lineTo(svx-vpx*hw, svy-vpy*hw);
+  ctx.closePath(); ctx.fillStyle='rgba(0,20,45,1)'; ctx.fill();
+}
+const rngSeeded = s => { let x = Math.sin(s)*10000; return x - Math.floor(x); };
+
+function innerRimShadow(ctx, cx, cy, inner, outerFillR, darkness) {
+  const g = ctx.createRadialGradient(cx, cy, inner*1.18, cx, cy, inner);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, `rgba(0,0,0,${darkness})`);
+  ctx.beginPath();
+  ctx.arc(cx, cy, outerFillR, 0, Math.PI*2, false);
+  ctx.arc(cx, cy, inner, 0, Math.PI*2, true);
+  ctx.fillStyle = g;
+  ctx.fill('evenodd');
+}
+
+function buildDonutShadow(r) {
+  const inner=r*0.40, biteAngle=Math.PI*1.20, biteR=r*0.40, biteCentreR=r*1.02;
+  const nJ=8, jS=nJ*12, jA=r*0.020, eW=r*0.055;
+  const d2=biteCentreR;
+  const cosA=(d2*d2+biteR*biteR-r*r)/(2*d2*biteR);
+  const hs=Math.acos(Math.max(-1,Math.min(1,cosA)));
+  const obdx=biteCentreR*Math.cos(biteAngle), obdy=biteCentreR*Math.sin(biteAngle);
+  const bArcMid=Math.atan2(-obdy,-obdx);
+  const bA1=bArcMid-hs, bA2=bArcMid+hs;
+  const pad=20, sz=Math.ceil(r*2+pad*2);
+  const cv=document.createElement('canvas'); cv.width=cv.height=sz;
+  const sc=cv.getContext('2d'); const so=r+pad;
+  const sbx=so+obdx, sby=so+obdy;
+  sc.beginPath(); sc.arc(so,so,r,0,Math.PI*2,false); sc.arc(so,so,inner,0,Math.PI*2,true);
+  sc.fillStyle='rgba(0,20,45,1)'; sc.fill('evenodd');
+  drawValveShadow(sc, so, so, r, Math.PI*0.08);
+  sc.globalCompositeOperation='destination-out';
+  sc.beginPath();
+  sc.arc(sbx,sby,biteR,0,Math.PI*2,false);
+  for (let i=0;i<=jS;i++) {
+    const f=i/jS, a=bA1+f*(bA2-bA1);
+    const wig=Math.sin(f*Math.PI*2*nJ)*jA;
+    const rr=biteR-eW-wig;
+    i===0?sc.moveTo(sbx+rr*Math.cos(a),sby+rr*Math.sin(a)):sc.lineTo(sbx+rr*Math.cos(a),sby+rr*Math.sin(a));
+  }
+  sc.arc(sbx,sby,biteR,bA2,bA1,true);
+  sc.closePath(); sc.fillStyle='rgba(0,0,0,1)'; sc.fill('evenodd');
+  sc.globalCompositeOperation='source-over';
+  return {canvas:cv, w:sz, h:sz};
+}
+function buildDonut(r) {
+  const inner=r*0.40, icingOuter=r*0.915, biteAngle=Math.PI*1.20, biteR=r*0.40, biteCentreR=r*1.02;
+  const nW=22, stp=nW*8;
+  const nJ=8, jS=nJ*12, jA=r*0.020, eW=r*0.055;
+  const d2=biteCentreR;
+  const cosA=(d2*d2+biteR*biteR-r*r)/(2*d2*biteR);
+  const halfSpan=Math.acos(Math.max(-1,Math.min(1,cosA)));
+  const pad=20, sz=Math.ceil(r*2+pad*2);
+  const cv=document.createElement('canvas'); cv.width=cv.height=sz;
+  const oc=cv.getContext('2d'); const ox=r+pad, oy=r+pad;
+  const obx=ox+biteCentreR*Math.cos(biteAngle), oby=oy+biteCentreR*Math.sin(biteAngle);
+  const biteArcMid=Math.atan2(oy-oby, ox-obx);
+  const biteA1=biteArcMid-halfSpan, biteA2=biteArcMid+halfSpan;
+
+  oc.beginPath(); oc.arc(ox,oy,r,0,Math.PI*2,false); oc.arc(ox,oy,inner,0,Math.PI*2,true);
+  const dg=oc.createRadialGradient(ox,oy,inner,ox,oy,r);
+  dg.addColorStop(0,'#d4924a'); dg.addColorStop(0.4,'#df9f55'); dg.addColorStop(0.75,'#cf8840'); dg.addColorStop(1,'#b87030');
+  oc.fillStyle=dg; oc.fill('evenodd');
+
+  oc.beginPath();
+  for (let i=0;i<=stp;i++) {
+    const a=(i/stp)*Math.PI*2;
+    const rr=icingOuter+Math.sin((i/stp)*Math.PI*2*nW)*r*0.038;
+    i===0?oc.moveTo(ox+rr*Math.cos(a),oy+rr*Math.sin(a)):oc.lineTo(ox+rr*Math.cos(a),oy+rr*Math.sin(a));
+  }
+  oc.closePath(); oc.arc(ox,oy,inner,0,Math.PI*2,true);
+  oc.fillStyle='#f48fb1'; oc.fill('evenodd');
+
+  const iHL=oc.createRadialGradient(ox-r*0.2,oy-r*0.18,0,ox,oy,r*0.85);
+  iHL.addColorStop(0,'rgba(255,215,232,0.50)'); iHL.addColorStop(0.5,'rgba(255,195,220,0.10)'); iHL.addColorStop(1,'rgba(0,0,0,0)');
+  oc.fillStyle=iHL;
+  oc.beginPath(); oc.arc(ox,oy,r,0,Math.PI*2); oc.arc(ox,oy,inner,0,Math.PI*2,true); oc.fill('evenodd');
+
+  innerRimShadow(oc, ox, oy, inner, r, 0.16);
+
+  oc.globalCompositeOperation='destination-out';
+  oc.beginPath();
+  oc.arc(obx,oby,biteR,0,Math.PI*2,false);
+  for (let i=0;i<=jS;i++) {
+    const f=i/jS, a=biteA1+f*(biteA2-biteA1);
+    const wig=Math.sin(f*Math.PI*2*nJ)*jA;
+    const rr=biteR-eW-wig;
+    i===0?oc.moveTo(obx+rr*Math.cos(a),oby+rr*Math.sin(a)):oc.lineTo(obx+rr*Math.cos(a),oby+rr*Math.sin(a));
+  }
+  oc.arc(obx,oby,biteR,biteA2,biteA1,true);
+  oc.closePath(); oc.fillStyle='rgba(0,0,0,1)'; oc.fill('evenodd');
+  oc.globalCompositeOperation='source-over';
+
+  const sc2=['hsl(345,65%,62%)','hsl(225,60%,62%)','hsl(45,70%,58%)','hsl(140,52%,55%)','hsl(25,65%,60%)','hsl(275,52%,62%)'];
+  for (let i=0;i<80;i++) {
+    const a=rngSeeded(i*7.1)*Math.PI*2;
+    const rad=inner*1.15+rngSeeded(i*3.3)*(icingOuter*0.88-inner*1.15);
+    const sx=ox+rad*Math.cos(a), sy=oy+rad*Math.sin(a);
+    const dbx=sx-obx, dby=sy-oby;
+    if (Math.sqrt(dbx*dbx+dby*dby)<biteR) continue;
+    const dc=Math.sqrt((sx-ox)**2+(sy-oy)**2);
+    if (dc>icingOuter*0.97||dc<inner*1.08) continue;
+    oc.save(); oc.translate(sx,sy); oc.rotate(rngSeeded(i*11.7)*Math.PI);
+    oc.fillStyle=sc2[Math.floor(rngSeeded(i*5.3)*sc2.length)];
+    oc.beginPath(); oc.ellipse(0,0,r*0.062,r*0.020,0,0,Math.PI*2); oc.fill();
+    oc.restore();
+  }
+  drawValve(oc, ox, oy, r, Math.PI*0.08);
+  return {canvas:cv, w:sz, h:sz};
+}
+
+function buildWatermelonShadow(r) {
+  const inner=r*0.40, pad=20, sz=Math.ceil(r*2+pad*2);
+  const cv=document.createElement('canvas'); cv.width=cv.height=sz;
+  const sc=cv.getContext('2d'); const so=r+pad;
+  sc.beginPath(); sc.arc(so,so,r,0,Math.PI*2,false); sc.arc(so,so,inner,0,Math.PI*2,true);
+  sc.fillStyle='rgba(0,20,45,1)'; sc.fill('evenodd');
+  drawValveShadow(sc, so, so, r, Math.PI*0.08);
+  return {canvas:cv, w:sz, h:sz};
+}
+function buildWatermelon(r) {
+  const inner=r*0.40, pad=20, sz=Math.ceil(r*2+pad*2);
+  const cv=document.createElement('canvas'); cv.width=cv.height=sz;
+  const oc=cv.getContext('2d'); const ox=r+pad, oy=r+pad;
+  oc.beginPath(); oc.arc(ox,oy,r,0,Math.PI*2,false); oc.arc(ox,oy,inner,0,Math.PI*2,true);
+  oc.fillStyle='#2d8a3e'; oc.fill('evenodd');
+  oc.beginPath(); oc.arc(ox,oy,r*0.93,0,Math.PI*2,false); oc.arc(ox,oy,r*0.88,0,Math.PI*2,true);
+  oc.fillStyle='#7ec850'; oc.fill('evenodd');
+  oc.beginPath(); oc.arc(ox,oy,r*0.875,0,Math.PI*2,false); oc.arc(ox,oy,r*0.855,0,Math.PI*2,true);
+  oc.fillStyle='rgba(240,245,230,0.90)'; oc.fill('evenodd');
+  oc.beginPath(); oc.arc(ox,oy,r*0.852,0,Math.PI*2,false); oc.arc(ox,oy,inner,0,Math.PI*2,true);
+  oc.fillStyle='#e8384a'; oc.fill('evenodd');
+  const fHL=oc.createRadialGradient(ox-r*0.15,oy-r*0.15,0,ox,oy,r*0.8);
+  fHL.addColorStop(0,'rgba(255,180,180,0.35)'); fHL.addColorStop(1,'rgba(0,0,0,0)');
+  oc.fillStyle=fHL;
+  oc.beginPath(); oc.arc(ox,oy,r*0.852,0,Math.PI*2); oc.arc(ox,oy,inner,0,Math.PI*2,true); oc.fill('evenodd');
+
+  innerRimShadow(oc, ox, oy, inner, r*0.852, 0.18);
+
+  const seedInner=inner*1.22, seedOuter=r*0.800, total=38;
+  for (let i=0;i<total;i++) {
+    const a=(i/total)*Math.PI*2 + (rngSeeded(i*13.7+1)-0.5)*(Math.PI*2/total)*0.7;
+    const rad=seedInner+rngSeeded(i*3.3+2)*(seedOuter-seedInner);
+    const tilt=a+Math.PI*0.5+(rngSeeded(i*2.3+3)-0.5)*0.6;
+    const sx=ox+rad*Math.cos(a), sy=oy+rad*Math.sin(a);
+    oc.save(); oc.translate(sx,sy); oc.rotate(tilt);
+    oc.fillStyle='#1a1a1a';
+    oc.beginPath(); oc.ellipse(0,0,r*0.016,r*0.028,0,0,Math.PI*2); oc.fill();
+    oc.restore();
+  }
+  drawValve(oc, ox, oy, r, Math.PI*0.08);
+  return {canvas:cv, w:sz, h:sz};
+}
+
+function buildStripedShadow(r) {
+  const inner=r*0.40, pad=20, sz=Math.ceil(r*2+pad*2);
+  const cv=document.createElement('canvas'); cv.width=cv.height=sz;
+  const sc=cv.getContext('2d'); const so=r+pad;
+  sc.beginPath(); sc.arc(so,so,r,0,Math.PI*2,false); sc.arc(so,so,inner,0,Math.PI*2,true);
+  sc.fillStyle='rgba(0,20,45,1)'; sc.fill('evenodd');
+  drawValveShadow(sc, so, so, r, Math.PI*0.08);
+  return {canvas:cv, w:sz, h:sz};
+}
+function buildStriped(r) {
+  const inner=r*0.40, pad=20, sz=Math.ceil(r*2+pad*2);
+  const cv=document.createElement('canvas'); cv.width=cv.height=sz;
+  const oc=cv.getContext('2d'); const ox=r+pad, oy=r+pad;
+  const colours=['#ffffff','#ffb3c6','#ffffff','#b3d9ff','#ffffff','#b3ffcc','#ffffff','#ffd9b3'];
+  const nStripes=colours.length;
+  oc.save();
+  oc.beginPath(); oc.arc(ox,oy,r,0,Math.PI*2,false); oc.arc(ox,oy,inner,0,Math.PI*2,true); oc.clip('evenodd');
+  for (let s=0;s<nStripes;s++) {
+    const a0=(s/nStripes)*Math.PI*2, a1=((s+1)/nStripes)*Math.PI*2;
+    oc.beginPath(); oc.arc(ox,oy,r,a0,a1,false); oc.arc(ox,oy,inner,a1,a0,true); oc.closePath();
+    oc.fillStyle=colours[s]; oc.fill();
+    const midA=(a0+a1)/2;
+    const sg=oc.createLinearGradient(ox+r*0.82*Math.cos(midA),oy+r*0.82*Math.sin(midA),ox+r*Math.cos(midA),oy+r*Math.sin(midA));
+    sg.addColorStop(0,'rgba(0,0,0,0)'); sg.addColorStop(1,'rgba(0,0,0,0.14)');
+    oc.beginPath(); oc.arc(ox,oy,r,a0,a1,false); oc.arc(ox,oy,inner,a1,a0,true); oc.closePath();
+    oc.fillStyle=sg; oc.fill();
+  }
+  for (let s=0;s<nStripes;s++) {
+    const a=(s/nStripes)*Math.PI*2;
+    oc.beginPath(); oc.moveTo(ox+inner*Math.cos(a),oy+inner*Math.sin(a)); oc.lineTo(ox+r*Math.cos(a),oy+r*Math.sin(a));
+    oc.strokeStyle='rgba(180,180,180,0.22)'; oc.lineWidth=0.8; oc.stroke();
+  }
+  innerRimShadow(oc, ox, oy, inner, r, 0.16);
+  oc.restore();
+  drawValve(oc, ox, oy, r, Math.PI*0.08);
+  return {canvas:cv, w:sz, h:sz};
+}
+
+function buildSwanShadow(r) {
+  const inner=r*0.42, sz=Math.ceil(r*2 + r*2.0);
+  const cv=document.createElement('canvas'); cv.width=cv.height=sz;
+  const sc=cv.getContext('2d'); const so=sz/2;
+  function shadowWing(s) {
+    const ax=so+s*r*0.88, ay=so-r*0.20;
+    sc.save(); sc.translate(ax,ay);
+    sc.beginPath();
+    sc.moveTo(s*r*0.05, r*0.02);
+    sc.bezierCurveTo(s*r*0.55,-r*0.55, s*r*0.85,r*0.15, s*r*0.32,r*0.78);
+    sc.bezierCurveTo(s*r*0.08,r*0.56, s*r*0.04,r*0.18, s*r*0.05,r*0.02);
+    sc.fillStyle='rgba(0,20,45,1)'; sc.fill();
+    sc.restore();
+  }
+  shadowWing(-1); shadowWing(1);
+  sc.beginPath(); sc.ellipse(so, so+r*0.88, r*0.22, r*0.16, 0, 0, Math.PI*2);
+  sc.fillStyle='rgba(0,20,45,1)'; sc.fill();
+  sc.beginPath(); sc.arc(so,so,r,0,Math.PI*2,false); sc.arc(so,so,inner,0,Math.PI*2,true);
+  sc.fillStyle='rgba(0,20,45,1)'; sc.fill('evenodd');
+
+  const shcx=so, shcr=r*0.52, shcy=so-r-shcr*0.10;
+  const shTipY=shcy-shcr*1.917, shBaseY=shcy-shcr*0.375, shBaseHW=shcr*1.00;
+  sc.beginPath(); sc.arc(shcx, shcy, shcr, 0, Math.PI*2);
+  sc.fillStyle='rgba(0,20,45,1)'; sc.fill();
+  const shTipArcR=shcr*0.30, shTipHW=shcr*0.28, shTipArcCY=shTipY+shTipArcR*2.2;
+  const shTipLRY=shTipArcCY-Math.sqrt(Math.max(0, shTipArcR*shTipArcR-shTipHW*shTipHW));
+  const shTipLX=shcx-shTipHW, shTipRX=shcx+shTipHW;
+  const shTipAngL=Math.atan2(shTipLRY-shTipArcCY, shTipLX-shcx);
+  const shTipAngR=Math.atan2(shTipLRY-shTipArcCY, shTipRX-shcx);
+  sc.beginPath();
+  sc.moveTo(shTipLX, shTipLRY);
+  sc.bezierCurveTo(shcx-shcr*0.183, shcy-shcr*1.600, shcx-shcr*0.483, shcy-shcr*0.875, shcx-shBaseHW, shBaseY);
+  sc.quadraticCurveTo(shcx, shcy-shcr*1.417, shcx+shBaseHW, shBaseY);
+  sc.bezierCurveTo(shcx+shcr*0.483, shcy-shcr*0.875, shcx+shcr*0.183, shcy-shcr*1.600, shTipRX, shTipLRY);
+  sc.arc(shcx, shTipArcCY, shTipArcR, shTipAngR, shTipAngL, true);
+  sc.closePath(); sc.fillStyle='rgba(0,20,45,1)'; sc.fill();
+  drawValveShadow(sc, so, so, r, Math.PI*0.55);
+  return {canvas:cv, w:sz, h:sz};
+}
+function buildSwan(r) {
+  const inner=r*0.42, white='#f0eeea', sz=Math.ceil(r*2 + r*2.0);
+  const cv=document.createElement('canvas'); cv.width=cv.height=sz;
+  const oc=cv.getContext('2d'); const ox=sz/2, oy=sz/2;
+
+  function wingPath(oc, s) {
+    oc.beginPath();
+    oc.moveTo(s*r*0.05, r*0.02);
+    oc.bezierCurveTo(s*r*0.55,-r*0.55, s*r*0.85,r*0.15, s*r*0.32,r*0.78);
+    oc.bezierCurveTo(s*r*0.08,r*0.56, s*r*0.04,r*0.18, s*r*0.05,r*0.02);
+  }
+  function drawWing(flipX) {
+    const s = flipX ? -1 : 1;
+    oc.save(); oc.translate(ox+s*r*0.88, oy-r*0.20);
+    wingPath(oc, s); oc.fillStyle=white; oc.fill();
+    const wcx=s*r*0.35, wcy=r*0.22;
+    const wg=oc.createRadialGradient(wcx,wcy,0,wcx,wcy,r*0.88);
+    wg.addColorStop(0,'rgba(255,255,255,0.20)'); wg.addColorStop(0.65,'rgba(0,0,0,0)'); wg.addColorStop(1,'rgba(0,0,0,0.18)');
+    wingPath(oc, s); oc.fillStyle=wg; oc.fill();
+    oc.save(); wingPath(oc, s); oc.clip();
+    oc.strokeStyle='#e2e0db'; oc.lineWidth=1.2; oc.lineCap='round';
+    const wSeamX=s*r*0.35, wSeamT=r*0.12, wSeamB=r*0.55;
+    oc.beginPath(); oc.moveTo(wSeamX,wSeamT); oc.lineTo(wSeamX,wSeamB); oc.stroke();
+    for (const t of [0.20,0.40,0.60,0.80]) {
+      const ty=wSeamT+(wSeamB-wSeamT)*t, hw=r*0.07;
+      oc.beginPath(); oc.moveTo(wSeamX-hw,ty); oc.lineTo(wSeamX+hw,ty); oc.stroke();
+    }
+    oc.restore(); oc.restore();
+  }
+  drawWing(true); drawWing(false);
+
+  oc.beginPath(); oc.arc(ox,oy,r,0,Math.PI*2,false); oc.arc(ox,oy,inner,0,Math.PI*2,true);
+  oc.fillStyle=white; oc.fill('evenodd');
+  const outerSh=oc.createRadialGradient(ox,oy,r*0.84,ox,oy,r);
+  outerSh.addColorStop(0,'rgba(0,0,0,0)'); outerSh.addColorStop(1,'rgba(0,0,0,0.09)');
+  oc.beginPath(); oc.arc(ox,oy,r,0,Math.PI*2,false); oc.arc(ox,oy,inner,0,Math.PI*2,true);
+  oc.fillStyle=outerSh; oc.fill('evenodd');
+  innerRimShadow(oc, ox, oy, inner, r, 0.16);
+
+  oc.beginPath(); oc.ellipse(ox,oy+r*0.88,r*0.22,r*0.16,0,0,Math.PI*2);
+  oc.fillStyle=white; oc.fill();
+  const tg=oc.createRadialGradient(ox,oy+r*0.80,0,ox,oy+r*0.88,r*0.28);
+  tg.addColorStop(0,'rgba(255,255,255,0.22)'); tg.addColorStop(0.72,'rgba(255,255,255,0.08)'); tg.addColorStop(1,'rgba(0,0,0,0.14)');
+  oc.beginPath(); oc.ellipse(ox,oy+r*0.88,r*0.22,r*0.16,0,0,Math.PI*2);
+  oc.fillStyle=tg; oc.fill();
+
+  const hcx=ox, hcr=r*0.52, hcy=oy-r-hcr*0.10;
+  const tipY=hcy-hcr*1.917, baseY=hcy-hcr*0.375, baseHW=hcr*1.00;
+  const arcLCP=hcy-hcr*1.417, arcUCP=hcy-hcr*1.708, eyeHW=hcr*0.733;
+
+  oc.beginPath(); oc.arc(hcx,hcy,hcr,0,Math.PI*2); oc.fillStyle=white; oc.fill();
+  const hSh=oc.createRadialGradient(hcx,hcy,hcr*0.78,hcx,hcy,hcr);
+  hSh.addColorStop(0,'rgba(0,0,0,0)'); hSh.addColorStop(1,'rgba(0,0,0,0.07)');
+  oc.beginPath(); oc.arc(hcx,hcy,hcr,0,Math.PI*2); oc.fillStyle=hSh; oc.fill();
+
+  const tipArcR=hcr*0.30, tipHW=hcr*0.28, tipArcCY=tipY+tipArcR*2.2;
+  const tipLRY=tipArcCY-Math.sqrt(Math.max(0, tipArcR*tipArcR-tipHW*tipHW));
+  const tipLX=hcx-tipHW, tipRX=hcx+tipHW;
+  const tipAngL=Math.atan2(tipLRY-tipArcCY, tipLX-hcx);
+  const tipAngR=Math.atan2(tipLRY-tipArcCY, tipRX-hcx);
+  oc.beginPath();
+  oc.moveTo(tipLX, tipLRY);
+  oc.bezierCurveTo(hcx-hcr*0.183, hcy-hcr*1.600, hcx-hcr*0.483, hcy-hcr*0.875, hcx-baseHW, baseY);
+  oc.quadraticCurveTo(hcx, arcLCP, hcx+baseHW, baseY);
+  oc.bezierCurveTo(hcx+hcr*0.483, hcy-hcr*0.875, hcx+hcr*0.183, hcy-hcr*1.600, tipRX, tipLRY);
+  oc.arc(hcx, tipArcCY, tipArcR, tipAngR, tipAngL, true);
+  oc.closePath(); oc.fillStyle='#e8821a'; oc.fill();
+
+  oc.save(); oc.beginPath(); oc.arc(hcx,hcy,hcr,0,Math.PI*2); oc.clip();
+  oc.beginPath();
+  oc.moveTo(hcx-baseHW, baseY);
+  oc.quadraticCurveTo(hcx, arcUCP, hcx+baseHW, baseY);
+  oc.quadraticCurveTo(hcx, arcLCP, hcx-baseHW, baseY);
+  oc.closePath(); oc.fillStyle='#111'; oc.fill();
+  oc.restore();
+
+  const eyeR2=hcr*0.183, eyeWR2=hcr*0.071;
+  for (const side of [-1,1]) {
+    const ex=hcx+side*eyeHW, ey=baseY;
+    oc.beginPath(); oc.arc(ex,ey,eyeR2,0,Math.PI*2); oc.fillStyle='#111'; oc.fill();
+    oc.beginPath(); oc.arc(ex+eyeR2*0.3, ey-eyeR2*0.3, eyeWR2, 0, Math.PI*2);
+    oc.fillStyle='rgba(255,255,255,0.85)'; oc.fill();
+  }
+
+  const seamX=hcx, seamT=hcy-hcr*0.20, seamB=hcy+hcr*0.55;
+  oc.save();
+  oc.strokeStyle='#e2e0db'; oc.lineWidth=1.2; oc.lineCap='round';
+  oc.beginPath(); oc.moveTo(seamX,seamT); oc.lineTo(seamX,seamB); oc.stroke();
+  for (const t of [0.15,0.32,0.50,0.68,0.85]) {
+    const ty=seamT+(seamB-seamT)*t, hw=hcr*0.11;
+    oc.beginPath(); oc.moveTo(seamX-hw,ty); oc.lineTo(seamX+hw,ty); oc.stroke();
+  }
+  oc.restore();
+
+  drawValve(oc, ox, oy, r, Math.PI*0.55);
+  return {canvas:cv, w:sz, h:sz};
+}
+
+function buildFlamingoShadow(r) {
+  const inner=r*0.42, sz=Math.ceil(r*2 + r*2.0);
+  const cv=document.createElement('canvas'); cv.width=cv.height=sz;
+  const sc=cv.getContext('2d'); const so=sz/2;
+  function shadowWing(s) {
+    const ax=so+s*r*0.88, ay=so-r*0.20;
+    sc.save(); sc.translate(ax,ay);
+    sc.beginPath();
+    sc.moveTo(s*r*0.05, r*0.02);
+    sc.bezierCurveTo(s*r*0.55,-r*0.55, s*r*0.85,r*0.15, s*r*0.32,r*0.78);
+    sc.bezierCurveTo(s*r*0.08,r*0.56, s*r*0.04,r*0.18, s*r*0.05,r*0.02);
+    sc.fillStyle='rgba(0,20,45,1)'; sc.fill();
+    sc.restore();
+  }
+  shadowWing(-1); shadowWing(1);
+  sc.beginPath(); sc.ellipse(so, so+r*0.88, r*0.22, r*0.16, 0, 0, Math.PI*2);
+  sc.fillStyle='rgba(0,20,45,1)'; sc.fill();
+  sc.beginPath(); sc.arc(so,so,r,0,Math.PI*2,false); sc.arc(so,so,inner,0,Math.PI*2,true);
+  sc.fillStyle='rgba(0,20,45,1)'; sc.fill('evenodd');
+
+  const shcx=so, shcr=r*0.52, shcy=so-r-shcr*0.10;
+  const shTipY=shcy-shcr*1.917, shBaseY=shcy-shcr*0.375, shBaseHW=shcr*1.00;
+  sc.beginPath(); sc.arc(shcx, shcy, shcr, 0, Math.PI*2);
+  sc.fillStyle='rgba(0,20,45,1)'; sc.fill();
+  const shTipArcR=shcr*0.30, shTipHW=shcr*0.28, shTipArcCY=shTipY+shTipArcR*2.2;
+  const shTipLRY=shTipArcCY-Math.sqrt(Math.max(0, shTipArcR*shTipArcR-shTipHW*shTipHW));
+  const shTipLX=shcx-shTipHW, shTipRX=shcx+shTipHW;
+  const shTipAngL=Math.atan2(shTipLRY-shTipArcCY, shTipLX-shcx);
+  const shTipAngR=Math.atan2(shTipLRY-shTipArcCY, shTipRX-shcx);
+  sc.beginPath();
+  sc.moveTo(shTipLX, shTipLRY);
+  sc.bezierCurveTo(shcx-shcr*0.183, shcy-shcr*1.600, shcx-shcr*0.483, shcy-shcr*0.875, shcx-shBaseHW, shBaseY);
+  sc.quadraticCurveTo(shcx, shcy-shcr*1.417, shcx+shBaseHW, shBaseY);
+  sc.bezierCurveTo(shcx+shcr*0.483, shcy-shcr*0.875, shcx+shcr*0.183, shcy-shcr*1.600, shTipRX, shTipLRY);
+  sc.arc(shcx, shTipArcCY, shTipArcR, shTipAngR, shTipAngL, true);
+  sc.closePath(); sc.fillStyle='rgba(0,20,45,1)'; sc.fill();
+  const shCrescShift=shTipArcR*0.42;
+  const shInnerCR=Math.sqrt(shTipHW*shTipHW + (shTipLRY-(shTipArcCY+shCrescShift))**2);
+  sc.save();
+  sc.beginPath(); sc.rect(shcx-shTipArcR*2, shTipY-shTipArcR, shTipArcR*4, shTipLRY-shTipY+shTipArcR); sc.clip();
+  sc.beginPath();
+  sc.arc(shcx, shTipArcCY, shTipArcR, 0, Math.PI*2, false);
+  sc.arc(shcx, shTipArcCY+shCrescShift, shInnerCR, 0, Math.PI*2, true);
+  sc.fillStyle='rgba(0,20,45,1)'; sc.fill('evenodd');
+  sc.restore();
+  drawValveShadow(sc, so, so, r, Math.PI*0.55);
+  return {canvas:cv, w:sz, h:sz};
+}
+function buildFlamingo(r) {
+  const PINK='#f9719a', SEAM_COLOR='#dc6888', BEAK_PINK='#f4a7c3';
+  const inner=r*0.42, sz=Math.ceil(r*2 + r*2.0);
+  const cv=document.createElement('canvas'); cv.width=cv.height=sz;
+  const oc=cv.getContext('2d'); const ox=sz/2, oy=sz/2;
+
+  function wingPath(oc, s) {
+    oc.beginPath();
+    oc.moveTo(s*r*0.05, r*0.02);
+    oc.bezierCurveTo(s*r*0.55,-r*0.55, s*r*0.85,r*0.15, s*r*0.32,r*0.78);
+    oc.bezierCurveTo(s*r*0.08,r*0.56, s*r*0.04,r*0.18, s*r*0.05,r*0.02);
+  }
+  function drawWing(flipX) {
+    const s = flipX ? -1 : 1;
+    oc.save(); oc.translate(ox+s*r*0.88, oy-r*0.20);
+    wingPath(oc, s); oc.fillStyle=PINK; oc.fill();
+    const wcx=s*r*0.35, wcy=r*0.22;
+    const wg=oc.createRadialGradient(wcx,wcy,0,wcx,wcy,r*0.88);
+    wg.addColorStop(0,'rgba(255,255,255,0.20)'); wg.addColorStop(0.65,'rgba(0,0,0,0)'); wg.addColorStop(1,'rgba(0,0,0,0.18)');
+    wingPath(oc, s); oc.fillStyle=wg; oc.fill();
+    oc.save(); wingPath(oc, s); oc.clip();
+    oc.strokeStyle=SEAM_COLOR; oc.lineWidth=1.2; oc.lineCap='round';
+    const wSeamX=s*r*0.35, wSeamT=r*0.12, wSeamB=r*0.55;
+    oc.beginPath(); oc.moveTo(wSeamX,wSeamT); oc.lineTo(wSeamX,wSeamB); oc.stroke();
+    for (const t of [0.20,0.40,0.60,0.80]) {
+      const ty=wSeamT+(wSeamB-wSeamT)*t, hw=r*0.07;
+      oc.beginPath(); oc.moveTo(wSeamX-hw,ty); oc.lineTo(wSeamX+hw,ty); oc.stroke();
+    }
+    oc.restore(); oc.restore();
+  }
+  drawWing(true); drawWing(false);
+
+  oc.beginPath(); oc.arc(ox,oy,r,0,Math.PI*2,false); oc.arc(ox,oy,inner,0,Math.PI*2,true);
+  oc.fillStyle=PINK; oc.fill('evenodd');
+  const outerSh=oc.createRadialGradient(ox,oy,r*0.84,ox,oy,r);
+  outerSh.addColorStop(0,'rgba(0,0,0,0)'); outerSh.addColorStop(1,'rgba(0,0,0,0.09)');
+  oc.beginPath(); oc.arc(ox,oy,r,0,Math.PI*2,false); oc.arc(ox,oy,inner,0,Math.PI*2,true);
+  oc.fillStyle=outerSh; oc.fill('evenodd');
+  innerRimShadow(oc, ox, oy, inner, r, 0.16);
+
+  oc.beginPath(); oc.ellipse(ox,oy+r*0.88,r*0.22,r*0.16,0,0,Math.PI*2);
+  oc.fillStyle=PINK; oc.fill();
+  const tg=oc.createRadialGradient(ox,oy+r*0.80,0,ox,oy+r*0.88,r*0.28);
+  tg.addColorStop(0,'rgba(255,255,255,0.22)'); tg.addColorStop(0.72,'rgba(255,255,255,0.08)'); tg.addColorStop(1,'rgba(0,0,0,0.14)');
+  oc.beginPath(); oc.ellipse(ox,oy+r*0.88,r*0.22,r*0.16,0,0,Math.PI*2);
+  oc.fillStyle=tg; oc.fill();
+
+  const hcx=ox, hcr=r*0.52, hcy=oy-r-hcr*0.10;
+  const tipY=hcy-hcr*1.917, baseY=hcy-hcr*0.375, baseHW=hcr*1.00;
+  const arcLCP=hcy-hcr*1.417, eyeHW=hcr*0.733;
+
+  oc.beginPath(); oc.arc(hcx,hcy,hcr,0,Math.PI*2); oc.fillStyle=PINK; oc.fill();
+  const hSh=oc.createRadialGradient(hcx,hcy,hcr*0.78,hcx,hcy,hcr);
+  hSh.addColorStop(0,'rgba(0,0,0,0)'); hSh.addColorStop(1,'rgba(0,0,0,0.07)');
+  oc.beginPath(); oc.arc(hcx,hcy,hcr,0,Math.PI*2); oc.fillStyle=hSh; oc.fill();
+
+  const tipArcR=hcr*0.30, tipHW=hcr*0.28, tipArcCY=tipY+tipArcR*2.2;
+  const tipLRY=tipArcCY-Math.sqrt(Math.max(0, tipArcR*tipArcR-tipHW*tipHW));
+  const tipLX=hcx-tipHW, tipRX=hcx+tipHW;
+  const tipAngL=Math.atan2(tipLRY-tipArcCY, tipLX-hcx);
+  const tipAngR=Math.atan2(tipLRY-tipArcCY, tipRX-hcx);
+  oc.beginPath();
+  oc.moveTo(tipLX, tipLRY);
+  oc.bezierCurveTo(hcx-hcr*0.183, hcy-hcr*1.600, hcx-hcr*0.483, hcy-hcr*0.875, hcx-baseHW, baseY);
+  oc.quadraticCurveTo(hcx, arcLCP, hcx+baseHW, baseY);
+  oc.bezierCurveTo(hcx+hcr*0.483, hcy-hcr*0.875, hcx+hcr*0.183, hcy-hcr*1.600, tipRX, tipLRY);
+  oc.arc(hcx, tipArcCY, tipArcR, tipAngR, tipAngL, true);
+  oc.closePath(); oc.fillStyle=BEAK_PINK; oc.fill();
+
+  const crescentShift=tipArcR*0.42;
+  const innerCR=Math.sqrt(tipHW*tipHW + (tipLRY-(tipArcCY+crescentShift))**2);
+  oc.save();
+  oc.beginPath(); oc.rect(hcx-tipArcR*2, tipY-tipArcR, tipArcR*4, tipLRY-tipY+tipArcR); oc.clip();
+  oc.beginPath();
+  oc.arc(hcx, tipArcCY, tipArcR, 0, Math.PI*2, false);
+  oc.arc(hcx, tipArcCY+crescentShift, innerCR, 0, Math.PI*2, true);
+  oc.fillStyle='#111'; oc.fill('evenodd');
+  oc.restore();
+
+  const eyeR=hcr*0.183, eyeRing=hcr*0.072, eyeInR=eyeR-eyeRing, eyeWR=hcr*0.048;
+  for (const side of [-1,1]) {
+    const ex=hcx+side*eyeHW, ey=baseY;
+    oc.beginPath(); oc.arc(ex,ey,eyeR,0,Math.PI*2); oc.fillStyle=BEAK_PINK; oc.fill();
+    oc.beginPath(); oc.arc(ex,ey,eyeInR,0,Math.PI*2); oc.fillStyle='#111'; oc.fill();
+    oc.beginPath(); oc.arc(ex+eyeInR*0.35, ey-eyeInR*0.35, eyeWR, 0, Math.PI*2);
+    oc.fillStyle='rgba(255,255,255,0.85)'; oc.fill();
+  }
+
+  const seamX=hcx, seamT=hcy-hcr*0.20, seamB=hcy+hcr*0.55;
+  oc.save();
+  oc.strokeStyle=SEAM_COLOR; oc.lineWidth=1.2; oc.lineCap='round';
+  oc.beginPath(); oc.moveTo(seamX,seamT); oc.lineTo(seamX,seamB); oc.stroke();
+  for (const t of [0.15,0.32,0.50,0.68,0.85]) {
+    const ty=seamT+(seamB-seamT)*t, hw=hcr*0.11;
+    oc.beginPath(); oc.moveTo(seamX-hw,ty); oc.lineTo(seamX+hw,ty); oc.stroke();
+  }
+  oc.restore();
+
+  drawValve(oc, ox, oy, r, Math.PI*0.55);
+  return {canvas:cv, w:sz, h:sz};
+}
+
+function rrPath(c, x, y, w, h, tl, tr, br, bl) {
+  c.beginPath();
+  c.moveTo(x+tl, y); c.lineTo(x+w-tr, y);
+  c.arcTo(x+w, y, x+w, y+tr, tr);
+  c.lineTo(x+w, y+h-br);
+  c.arcTo(x+w, y+h, x+w-br, y+h, br);
+  c.lineTo(x+bl, y+h);
+  c.arcTo(x, y+h, x, y+h-bl, bl);
+  c.lineTo(x, y+tl);
+  c.arcTo(x, y, x+tl, y, tl);
+  c.closePath();
+}
+function chairGeometry(BASE) {
+  const CW=BASE*1.10, CL=BASE*2.40, CR=BASE*0.12;
+  const armThick=BASE*0.42, armLen=CL*0.34;
+  const arT=-CL/2-armThick*0.5, barB=arT+armThick*1.25, armB=barB+armLen;
+  const armOver=BASE*0.28;
+  const arL=-CW/2-armOver, arR=CW/2+armOver;
+  const lArmX=arL, lArmW=armThick, rArmX=arR-armThick, rArmW=armThick;
+  const arTopCR=BASE*0.48, arBotCR=BASE*0.14, iCornerR=BASE*0.14;
+  const pad=BASE*1.0;
+  const sw=Math.ceil(CW+armOver*2+pad*2), sh=Math.ceil(CL+armThick+pad*2);
+  return {CW,CL,CR,armThick,armLen,arT,barB,armB,arL,arR,lArmX,lArmW,rArmX,rArmW,arTopCR,arBotCR,iCornerR,pad,sw,sh};
+}
+function buildChairShadow(BASE) {
+  const g = chairGeometry(BASE);
+  const cv=document.createElement('canvas'); cv.width=g.sw; cv.height=g.sh;
+  const sc=cv.getContext('2d'); const ox=g.sw/2, oy=g.sh/2;
+  sc.fillStyle='rgba(0,20,45,1)';
+  rrPath(sc, ox-g.CW/2, oy-g.CL/2, g.CW, g.CL, g.CR, g.CR, g.CR, g.CR); sc.fill();
+  {
+    const T=oy+g.arT, Bb=oy+g.barB, Ab=oy+g.armB;
+    const lX=ox+g.lArmX, lR=lX+g.lArmW, rX=ox+g.rArmX, rR=rX+g.rArmW;
+    const BL=lX, BR=rR, cr=g.arTopCR, bcr=g.arBotCR, icr=g.iCornerR;
+    sc.beginPath();
+    sc.moveTo(BL+cr, T); sc.lineTo(BR-cr, T);
+    sc.quadraticCurveTo(BR, T, BR, T+cr);
+    sc.lineTo(BR, Bb); sc.lineTo(rR, Bb);
+    sc.lineTo(rR, Ab-bcr); sc.quadraticCurveTo(rR, Ab, rR-bcr, Ab);
+    sc.lineTo(rX+bcr, Ab); sc.quadraticCurveTo(rX, Ab, rX, Ab-bcr);
+    sc.lineTo(rX, Bb+icr); sc.quadraticCurveTo(rX, Bb, rX-icr, Bb);
+    sc.lineTo(lR+icr, Bb); sc.quadraticCurveTo(lR, Bb, lR, Bb+icr);
+    sc.lineTo(lR, Ab-bcr); sc.quadraticCurveTo(lR, Ab, lR-bcr, Ab);
+    sc.lineTo(lX+bcr, Ab); sc.quadraticCurveTo(lX, Ab, lX, Ab-bcr);
+    sc.lineTo(lX, Bb); sc.lineTo(BL, Bb);
+    sc.lineTo(BL, T+cr); sc.quadraticCurveTo(BL, T, BL+cr, T);
+    sc.closePath(); sc.fill();
+  }
+  const vx=ox+g.CW/2, vy=oy+g.CL/2-BASE*0.30, vl=BASE*0.08, vw=BASE*0.028;
+  sc.beginPath(); sc.rect(vx, vy-vl/2, vw*1.8, vl); sc.fill();
+  sc.beginPath(); sc.arc(vx+vw*1.4, vy, vw*0.7, 0, Math.PI*2); sc.fill();
+  return {canvas:cv, w:g.sw, h:g.sh};
+}
+function buildChair(BASE) {
+  const YELLOW='#f5c842', YELLOW_DARK='#e0a820', SEAM_COL='#d9a018';
+  const SHADOW_TINT='0,20,45'; 
+  const g = chairGeometry(BASE);
+  const cv=document.createElement('canvas'); cv.width=g.sw; cv.height=g.sh;
+  const oc=cv.getContext('2d'); const ox=g.sw/2, oy=g.sh/2;
+
+  
+  
+  
+  
+  rrPath(oc, ox-g.CW/2, oy-g.CL/2, g.CW, g.CL, g.CR, g.CR, g.CR, g.CR);
+  oc.fillStyle=YELLOW; oc.fill();
+
+  const nTubes=5, tubeW=g.CW/nTubes;
+  oc.save(); rrPath(oc, ox-g.CW/2, oy-g.CL/2, g.CW, g.CL, g.CR, g.CR, g.CR, g.CR); oc.clip();
+  oc.strokeStyle=SEAM_COL; oc.lineWidth=BASE*0.022; oc.lineCap='round';
+  for (let i=1;i<nTubes;i++) {
+    const sx=ox-g.CW/2+i*tubeW;
+    oc.beginPath(); oc.moveTo(sx, oy-g.CL/2); oc.lineTo(sx, oy+g.CL/2); oc.stroke();
+  }
+  oc.strokeStyle='rgba(255,255,255,0.18)'; oc.lineWidth=BASE*0.030;
+  for (let i=0;i<nTubes;i++) {
+    const sx=ox-g.CW/2+i*tubeW+tubeW*0.28;
+    oc.beginPath(); oc.moveTo(sx, oy-g.CL/2+g.CR); oc.lineTo(sx, oy+g.CL/2-g.CR); oc.stroke();
+  }
+  oc.restore();
+
+  const T=oy+g.arT, Bb=oy+g.barB, Ab=oy+g.armB;
+  const lX=ox+g.lArmX, lR=lX+g.lArmW, rX=ox+g.rArmX, rR=rX+g.rArmW;
+  const BL=lX, BR=rR, cr=g.arTopCR, bcr=g.arBotCR, icr=g.iCornerR;
+
+  
+  
+  
+  
+  function pathOn(ctx) {
+    ctx.beginPath();
+    ctx.moveTo(BL+cr, T); ctx.lineTo(BR-cr, T);
+    ctx.quadraticCurveTo(BR, T, BR, T+cr);
+    ctx.lineTo(BR, Bb); ctx.lineTo(rR, Bb);
+    ctx.lineTo(rR, Ab-bcr); ctx.quadraticCurveTo(rR, Ab, rR-bcr, Ab);
+    ctx.lineTo(rX+bcr, Ab); ctx.quadraticCurveTo(rX, Ab, rX, Ab-bcr);
+    ctx.lineTo(rX, Bb+icr); ctx.quadraticCurveTo(rX, Bb, rX-icr, Bb);
+    ctx.lineTo(lR+icr, Bb); ctx.quadraticCurveTo(lR, Bb, lR, Bb+icr);
+    ctx.lineTo(lR, Ab-bcr); ctx.quadraticCurveTo(lR, Ab, lR-bcr, Ab);
+    ctx.lineTo(lX+bcr, Ab); ctx.quadraticCurveTo(lX, Ab, lX, Ab-bcr);
+    ctx.lineTo(lX, Bb); ctx.lineTo(BL, Bb);
+    ctx.lineTo(BL, T+cr); ctx.quadraticCurveTo(BL, T, BL+cr, T);
+    ctx.closePath();
+  }
+
+  
+  
+  
+  
+  
+  const shadowH=BASE*0.12, castAlpha=0.13;
+  function drawCastShadow() {
+    oc.save();
+    rrPath(oc, ox-g.CW/2, oy-g.CL/2, g.CW, g.CL, g.CR, g.CR, g.CR, g.CR); oc.clip();
+    const sg1=oc.createLinearGradient(0, Ab, 0, Ab+shadowH);
+    sg1.addColorStop(0, `rgba(${SHADOW_TINT},${castAlpha})`); sg1.addColorStop(1, `rgba(${SHADOW_TINT},0)`);
+    oc.fillStyle=sg1;
+    oc.beginPath();
+    oc.moveTo(lX, Ab); oc.lineTo(lR-bcr, Ab); oc.quadraticCurveTo(lR, Ab, lR, Ab-bcr);
+    oc.lineTo(lR, Ab+shadowH); oc.lineTo(lX, Ab+shadowH); oc.closePath(); oc.fill();
+    oc.beginPath();
+    oc.moveTo(rX, Ab-bcr); oc.quadraticCurveTo(rX, Ab, rX+bcr, Ab);
+    oc.lineTo(rR, Ab); oc.lineTo(rR, Ab+shadowH); oc.lineTo(rX, Ab+shadowH); oc.closePath(); oc.fill();
+    const sg2=oc.createLinearGradient(0, Bb, 0, Bb+shadowH);
+    sg2.addColorStop(0, `rgba(${SHADOW_TINT},${castAlpha})`); sg2.addColorStop(1, `rgba(${SHADOW_TINT},0)`);
+    oc.fillStyle=sg2;
+    oc.beginPath();
+    oc.moveTo(lR, Bb+icr); oc.quadraticCurveTo(lR, Bb, lR+icr, Bb);
+    oc.lineTo(rX-icr, Bb); oc.quadraticCurveTo(rX, Bb, rX, Bb+icr);
+    oc.lineTo(rX, Bb+shadowH); oc.lineTo(lR, Bb+shadowH); oc.closePath(); oc.fill();
+    oc.restore();
+  }
+
+  
+  
+  
+  const vignetteAlpha=0.09;
+  function drawSeatVignettes() {
+    oc.save();
+    rrPath(oc, ox-g.CW/2, oy-g.CL/2, g.CW, g.CL, g.CR, g.CR, g.CR, g.CR); oc.clip();
+    const seatEndH = g.CL*0.13;
+    const topV = oc.createLinearGradient(0, oy-g.CL/2, 0, oy-g.CL/2+seatEndH);
+    topV.addColorStop(0,`rgba(${SHADOW_TINT},${vignetteAlpha})`); topV.addColorStop(1,`rgba(${SHADOW_TINT},0)`);
+    oc.fillStyle = topV; oc.fillRect(ox-g.CW/2, oy-g.CL/2, g.CW, seatEndH);
+    const sideW = g.CW*0.18;
+    const leftV = oc.createLinearGradient(ox-g.CW/2, 0, ox-g.CW/2+sideW, 0);
+    leftV.addColorStop(0,`rgba(${SHADOW_TINT},${vignetteAlpha})`); leftV.addColorStop(1,`rgba(${SHADOW_TINT},0)`);
+    oc.fillStyle = leftV; oc.fillRect(ox-g.CW/2, oy-g.CL/2, sideW, g.CL);
+    const rightV = oc.createLinearGradient(ox+g.CW/2, 0, ox+g.CW/2-sideW, 0);
+    rightV.addColorStop(0,`rgba(${SHADOW_TINT},${vignetteAlpha})`); rightV.addColorStop(1,`rgba(${SHADOW_TINT},0)`);
+    oc.fillStyle = rightV; oc.fillRect(ox+g.CW/2-sideW, oy-g.CL/2, sideW, g.CL);
+    oc.restore();
+  }
+
+  drawCastShadow();
+  drawSeatVignettes();
+
+  
+  
+  pathOn(oc);
+  oc.fillStyle=YELLOW; oc.fill();
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  function continuousRim() {
+    const off=document.createElement('canvas');
+    off.width=g.sw; off.height=g.sh;
+    const offCtx=off.getContext('2d');
+    pathOn(offCtx); offCtx.clip();
+    const maxReach=g.armThick*0.60, N=14, scale=0.35;
+    for (let i=N; i>=1; i--) {
+      const frac=i/N;
+      pathOn(offCtx);
+      offCtx.lineWidth=maxReach*frac*2;
+      const alpha=(0.020*(1-frac)+0.014)*scale;
+      offCtx.strokeStyle=`rgba(${SHADOW_TINT},${alpha.toFixed(4)})`;
+      offCtx.stroke();
+    }
+    
+    
+    
+    const fadeFrac=(Bb-T)/(Ab-T);
+    const mask=offCtx.createLinearGradient(0, T, 0, Ab);
+    mask.addColorStop(0, 'rgba(0,0,0,1)');
+    mask.addColorStop(Math.max(0, Math.min(1, fadeFrac)), 'rgba(0,0,0,1)');
+    mask.addColorStop(1, 'rgba(0,0,0,0)');
+    offCtx.globalCompositeOperation='destination-in'; 
+    offCtx.fillStyle=mask;
+    offCtx.fillRect(0, 0, g.sw, g.sh);
+    oc.drawImage(off, 0, 0);
+  }
+  continuousRim();
+
+  const hpCX=ox, hpCY=oy+g.arT+g.armThick*1.25*0.50;
+  const hpHH=g.armThick*1.25*0.28, hpHW=(g.rArmX-g.lArmW-g.lArmX)*0; 
+  const gapL=g.lArmX+g.lArmW, gapR=g.rArmX;
+  const hpHW2=(gapR-gapL)*0.35, hpCR=hpHH*0.80;
+  rrPath(oc, hpCX-hpHW2, hpCY-hpHH, hpHW2*2, hpHH*2, hpCR, hpCR, hpCR, hpCR);
+  oc.fillStyle=YELLOW; oc.fill();
+  const hg=oc.createRadialGradient(hpCX, hpCY-hpHH*0.3, 0, hpCX, hpCY, hpHW2);
+  hg.addColorStop(0,'rgba(255,255,255,0.38)'); hg.addColorStop(0.5,'rgba(255,255,255,0.06)'); hg.addColorStop(1,'rgba(0,0,0,0.18)');
+  rrPath(oc, hpCX-hpHW2, hpCY-hpHH, hpHW2*2, hpHH*2, hpCR, hpCR, hpCR, hpCR);
+  oc.fillStyle=hg; oc.fill();
+
+  const cupR=BASE*0.068, cupY=oy+g.armB-BASE*0.16;
+  for (const cupX of [lX+g.lArmW*0.50, rX+g.rArmW*0.50]) {
+    oc.beginPath(); oc.arc(cupX, cupY, cupR*1.35, 0, Math.PI*2); oc.fillStyle=YELLOW_DARK; oc.fill();
+    oc.beginPath(); oc.arc(cupX, cupY, cupR, 0, Math.PI*2); oc.fillStyle='rgba(0,20,45,0.55)'; oc.fill();
+    oc.beginPath(); oc.arc(cupX, cupY, cupR*0.55, 0, Math.PI*2); oc.fillStyle='rgba(0,20,45,0.75)'; oc.fill();
+  }
+
+  const vx=ox+g.CW/2, vy=oy+g.CL/2-BASE*0.30, vl=BASE*0.08, vw=BASE*0.028;
+  oc.beginPath(); oc.rect(vx, vy-vl/2, vw*1.8, vl); oc.fillStyle='rgba(225,228,232,0.84)'; oc.fill();
+  oc.beginPath(); oc.arc(vx+vw*1.4, vy, vw*0.7, 0, Math.PI*2); oc.fillStyle='rgba(185,188,196,0.90)'; oc.fill();
+
+  return {canvas:cv, w:g.sw, h:g.sh};
+}
+
+const WING_R_POLY = [{x:0.9300,y:-0.1800},{x:1.0213,y:-0.2723},{x:1.1069,y:-0.3368},{x:1.1860,y:-0.3755},{x:1.2577,y:-0.3903},{x:1.3209,y:-0.3832},{x:1.3749,y:-0.3561},{x:1.4186,y:-0.3111},{x:1.4512,y:-0.2500},{x:1.4718,y:-0.1749},{x:1.4793,y:-0.0876},{x:1.4729,y:0.0098},{x:1.4517,y:0.1153},{x:1.4147,y:0.2271},{x:1.3611,y:0.3431},{x:1.2898,y:0.4614},{x:1.2000,y:0.5800},{x:1.1573,y:0.5370},{x:1.1191,y:0.4907},{x:1.0851,y:0.4419},{x:1.0552,y:0.3909},{x:1.0290,y:0.3385},{x:1.0065,y:0.2850},{x:0.9873,y:0.2312},{x:0.9712,y:0.1775},{x:0.9581,y:0.1245},{x:0.9478,y:0.0728},{x:0.9399,y:0.0229},{x:0.9342,y:-0.0247},{x:0.9306,y:-0.0693},{x:0.9289,y:-0.1104},{x:0.9287,y:-0.1475}];
+const WING_L_POLY = WING_R_POLY.map(p => ({x:-p.x, y:p.y}));
+const BEAK_POLY = [{x:-0.1456,y:-1.7616},{x:-0.1372,y:-1.7822},{x:-0.1372,y:-1.7841},{x:-0.1450,y:-1.7694},{x:-0.1605,y:-1.7404},{x:-0.1833,y:-1.6991},{x:-0.2131,y:-1.6477},{x:-0.2495,y:-1.5884},{x:-0.2922,y:-1.5232},{x:-0.3410,y:-1.4543},{x:-0.3954,y:-1.3839},{x:-0.4552,y:-1.3141},{x:-0.5200,y:-1.2470},{x:-0.4333,y:-1.3298},{x:-0.3467,y:-1.3975},{x:-0.2600,y:-1.4502},{x:-0.1733,y:-1.4878},{x:-0.0867,y:-1.5104},{x:0.0000,y:-1.5179},{x:0.0867,y:-1.5104},{x:0.1733,y:-1.4878},{x:0.2600,y:-1.4502},{x:0.3467,y:-1.3975},{x:0.4333,y:-1.3298},{x:0.5200,y:-1.2470},{x:0.4552,y:-1.3141},{x:0.3954,y:-1.3839},{x:0.3410,y:-1.4543},{x:0.2922,y:-1.5232},{x:0.2495,y:-1.5884},{x:0.2131,y:-1.6477},{x:0.1833,y:-1.6991},{x:0.1605,y:-1.7404},{x:0.1450,y:-1.7694},{x:0.1371,y:-1.7841},{x:0.1372,y:-1.7822},{x:0.1456,y:-1.7616},{x:0.1315,y:-1.7895},{x:0.1122,y:-1.8141},{x:0.0883,y:-1.8342},{x:0.0609,y:-1.8493},{x:0.0311,y:-1.8585},{x:0.0000,y:-1.8616},{x:-0.0311,y:-1.8585},{x:-0.0609,y:-1.8493},{x:-0.0883,y:-1.8342},{x:-0.1122,y:-1.8141},{x:-0.1315,y:-1.7895}];
+function birdShadowMaskParts(r) {
+  return [
+    {type:'annulus', x:0, y:0, outer:r*1.08, inner:r*0.42}, 
+    {type:'circle', x:0, y:-r*1.052, radius:r*0.52},
+    {type:'polygon', points: BEAK_POLY.map(p => ({x:p.x*r, y:p.y*r}))},
+    {type:'polygon', points: WING_R_POLY.map(p => ({x:p.x*r, y:p.y*r}))},
+    {type:'polygon', points: WING_L_POLY.map(p => ({x:p.x*r, y:p.y*r}))},
+  ];
+}
+
+function floatieShadowMaskParts(r) {
+  return [{type:'annulus', x:0, y:0, outer:r*1.00, inner:r*0.40}];
+}
+function donutShadowMaskParts(r) {
+  const biteAngle = Math.PI*1.20, biteR = r*0.40, biteCentreR = r*1.02;
+  return [{
+    type:'annulus', x:0, y:0, outer:r*1.00, inner:r*0.40,
+    holes: [{x: biteCentreR*Math.cos(biteAngle), y: biteCentreR*Math.sin(biteAngle), radius: biteR}],
+  }];
+}
+const TOY_DEFS = {
+  donut:      { group:'floatie', rFactor:0.20, shadowOffset:r=>({dx:r*0.55, dy:r*0.85}), collisionRadius:r=>r*1.00, collisionOffset:r=>({x:0,y:0}),     shadowMaskParts:donutShadowMaskParts,   build:buildDonut,      buildShadow:buildDonutShadow },
+  watermelon: { group:'floatie', rFactor:0.20, shadowOffset:r=>({dx:r*0.55, dy:r*0.85}), collisionRadius:r=>r*1.00, collisionOffset:r=>({x:0,y:0}),     shadowMaskParts:floatieShadowMaskParts, build:buildWatermelon, buildShadow:buildWatermelonShadow },
+  striped:    { group:'floatie', rFactor:0.20, shadowOffset:r=>({dx:r*0.55, dy:r*0.85}), collisionRadius:r=>r*1.00, collisionOffset:r=>({x:0,y:0}),     shadowMaskParts:floatieShadowMaskParts, build:buildStriped,    buildShadow:buildStripedShadow },
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  swan:       { group:'bird',    rFactor:0.17, shadowOffset:r=>({dx:r*0.55, dy:r*0.85}), collisionShape:'parts', collisionParts:r=>[
+    {type:'circle', x:0, y:0, radius:r*1.08},
+    {type:'circle', x:0, y:-r*1.05, radius:r*0.55},
+    {type:'triangle', p1:{x:-r*0.64,y:-r*1.25}, p2:{x:r*0.64,y:-r*1.25}, p3:{x:0,y:-r*1.98}},
+    {type:'capsule', x1:r*1.07,  y1:r*0.56, x2:r*1.24,  y2:-r*0.40, radius:r*0.33},
+    {type:'capsule', x1:-r*1.07, y1:r*0.56, x2:-r*1.24, y2:-r*0.40, radius:r*0.33},
+  ], shadowMaskParts: birdShadowMaskParts, build:buildSwan,       buildShadow:buildSwanShadow },
+  flamingo:   { group:'bird',    rFactor:0.17, shadowOffset:r=>({dx:r*0.55, dy:r*0.85}), collisionShape:'parts', collisionParts:r=>[
+    {type:'circle', x:0, y:0, radius:r*1.08},
+    {type:'circle', x:0, y:-r*1.05, radius:r*0.55},
+    {type:'triangle', p1:{x:-r*0.64,y:-r*1.25}, p2:{x:r*0.64,y:-r*1.25}, p3:{x:0,y:-r*1.98}},
+    {type:'capsule', x1:r*1.07,  y1:r*0.56, x2:r*1.24,  y2:-r*0.40, radius:r*0.33},
+    {type:'capsule', x1:-r*1.07, y1:r*0.56, x2:-r*1.24, y2:-r*0.40, radius:r*0.33},
+  ], shadowMaskParts: birdShadowMaskParts, build:buildFlamingo,   buildShadow:buildFlamingoShadow },
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  chair:      { group:'chair',   rFactor:0.225, shadowOffset:r=>({dx:r*0.4,  dy:r*0.55}), collisionShape:'boxes', collisionBoxes:r=>{
+    const g=chairGeometry(r);
+    const T=g.arT, Bb=g.barB, Ab=g.armB;
+    const lX=g.lArmX, lR=lX+g.lArmW, rX=g.rArmX, rR=rX+g.rArmW;
+    const BL=lX, BR=rR;
+    return [
+      { x:(BL+BR)/2, y:(T+Bb)/2, hx:(BR-BL)/2, hy:(Bb-T)/2 },
+      { x:(lX+lR)/2, y:(Bb+Ab)/2, hx:(lR-lX)/2, hy:(Ab-Bb)/2 },
+      { x:(rX+rR)/2, y:(Bb+Ab)/2, hx:(rR-rX)/2, hy:(Ab-Bb)/2 },
+      { x:0, y:0, hx:g.CW/2, hy:g.CL/2 },
+    ];
+  }, build:buildChair,      buildShadow:buildChairShadow },
+};
+
+const GROUP_MEMBERS = {
+  floatie: ['donut', 'watermelon', 'striped'],
+  bird:    ['swan', 'flamingo'],
+  chair:   ['chair'],
+};
+
+function shuffled(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(secureRandom() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function pickToyKeys(n) {
+  
+  
+  
+  
+  const slotOrder = shuffled(['floatie', 'bird', 'chair'])
+    .concat(shuffled(['floatie', 'floatie', 'bird']));
+
+  const pools = {};
+  for (const g in GROUP_MEMBERS) pools[g] = shuffled(GROUP_MEMBERS[g]);
+  const picked = [];
+  for (let i = 0; i < n; i++) {
+    const pool = pools[slotOrder[i]];
+    if (pool && pool.length) picked.push(pool.shift());
+  }
+  return picked;
+}
+
+function toyCountForWidth(w) {
+  if (w < 640)  return 2;
+  if (w < 900)  return 3;
+  if (w < 1200) return 4;
+  if (w < 1600) return 5;
+  return 6;
+}
+
+let flowMaxSpeed = 0;
+
+const TAPER_MAX_TIME = 0.35;
+
+function taperDecelZone(speed = flowMaxSpeed) { return Math.max(4, Math.min(30, speed * TAPER_MAX_TIME)); }
+function buildFlowField() {
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  const REFERENCE = 400, EXPONENT = 0.4;
+  
+  
+  
+  
+  
+  
+  const referenceTargetSpeed = REFERENCE * 0.032 * 0.85;
+  const targetSpeed = referenceTargetSpeed * Math.pow(Math.min(W, H) / REFERENCE, EXPONENT); 
+  flowMaxSpeed = targetSpeed * 1.1; 
+}
+
+function toyDriftVelocity(toy, tMs) {
+  const angle = toy.driftAngleBase
+    + Math.sin(tMs*toy.driftAngleFreq1 + toy.driftAnglePhase1) * toy.driftAngleAmp1
+    + Math.sin(tMs*toy.driftAngleFreq2 + toy.driftAnglePhase2) * toy.driftAngleAmp2;
+  const targetSpeed = flowMaxSpeed / 1.1;
+  const speedFrac = 0.45 + 0.35 * (0.5 + 0.5*Math.sin(tMs*toy.driftSpeedFreq + toy.driftSpeedPhase));
+  const speed = targetSpeed * speedFrac;
+  return { u: Math.cos(angle)*speed, v: Math.sin(angle)*speed };
+}
+
+function offScreenApproachVelocity(toy, targetX, targetY, outsideMargin, ambientU, ambientV, deepSpeed, decelZone, maxSpeed) {
+  const tdx = targetX - toy.x, tdy = targetY - toy.y;
+  const tdist = Math.hypot(tdx, tdy) || 1;
+  const dirX = tdx/tdist, dirY = tdy/tdist;
+  if (outsideMargin > decelZone) {
+    return { vx: ambientU + dirX*deepSpeed, vy: ambientV + dirY*deepSpeed };
+  }
+  
+  
+  
+  
+  const MIN_WEIGHT = 0.6;
+  const weight = MIN_WEIGHT + (1-MIN_WEIGHT) * (1 - outsideMargin/decelZone);
+  const ambientSpeed = Math.hypot(ambientU, ambientV) || 1;
+  const blendX = (ambientU/ambientSpeed)*(1-weight) + dirX*weight;
+  const blendY = (ambientV/ambientSpeed)*(1-weight) + dirY*weight;
+  const blendLen = Math.hypot(blendX, blendY) || 1;
+  return { vx: (blendX/blendLen)*maxSpeed, vy: (blendY/blendLen)*maxSpeed };
+}
+
+function advanceOffScreenApproach(toy, getTarget, marginX, marginY, ambientU, ambientV, speed, decelZone, maxSpeed, totalDt, screenW, screenH) {
+  const FLAT_MAX_SUBSTEP = 0.05; 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  const MAX_SUBSTEP = Math.min(FLAT_MAX_SUBSTEP, (decelZone * 0.25) / Math.max(speed, 1));
+  let remaining = totalDt;
+  while (remaining > 1e-6) {
+    const outsideMargin = Math.max(
+      (-marginX) - toy.x, toy.x - (screenW + marginX),
+      (-marginY) - toy.y, toy.y - (screenH + marginY),
+      0,
+    );
+    if (outsideMargin <= 0) return true;
+    const step = Math.min(MAX_SUBSTEP, remaining);
+    remaining -= step;
+    const tgt = getTarget(toy);
+    const r = offScreenApproachVelocity(toy, tgt.x, tgt.y, outsideMargin, ambientU, ambientV, speed, decelZone, maxSpeed);
+    toy.x += r.vx * step;
+    toy.y += r.vy * step;
+  }
+  const finalOutside = Math.max(
+    (-marginX) - toy.x, toy.x - (screenW + marginX),
+    (-marginY) - toy.y, toy.y - (screenH + marginY),
+    0,
+  );
+  return finalOutside <= 0;
+}
+
+class Toy {
+  constructor(key, arrivalSlot = 0, totalToys = 1) {
+    this.key = key;
+    const def = TOY_DEFS[key];
+    this.def = def;
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    const SIZE_REFERENCE = 400, SIZE_EXPONENT = 0.5;
+    const refR = SIZE_REFERENCE * def.rFactor;
+    this.r = refR * Math.pow(Math.min(W, H) / SIZE_REFERENCE, SIZE_EXPONENT);
+    const b = def.build(this.r);
+    this.canvas = b.canvas; this.w = b.w; this.h = b.h;
+    const s = def.buildShadow(this.r);
+    this.shadowCanvas = s.canvas; this.sw = s.w; this.sh = s.h;
+    this.shadowOff = def.shadowOffset(this.r);
+    this.collShape = def.collisionShape || 'circle';
+    if (this.collShape === 'circles') {
+      this.collCircles = def.collisionCircles(this.r); 
+      this.collOffset = {x:0, y:0};
+      
+      
+      this.collR = Math.max(...this.collCircles.map(c => Math.hypot(c.x, c.y) + c.radius));
+    } else if (this.collShape === 'boxes') {
+      this.collBoxes = def.collisionBoxes(this.r); 
+      this.collOffset = {x:0, y:0};
+      this.collHalfExtents = null; 
+      
+      
+      this.collR = Math.max(...this.collBoxes.map(b => Math.hypot(b.x, b.y) + Math.hypot(b.hx, b.hy)));
+    } else if (this.collShape === 'parts') {
+      this.collParts = def.collisionParts(this.r); 
+      this.collOffset = {x:0, y:0};
+      this.collHalfExtents = null;
+      
+      
+      this.collR = Math.max(...this.collParts.map(p => {
+        if (p.type === 'circle') return Math.hypot(p.x, p.y) + p.radius;
+        if (p.type === 'capsule') return Math.max(Math.hypot(p.x1,p.y1), Math.hypot(p.x2,p.y2)) + p.radius;
+        return Math.max(Math.hypot(p.p1.x,p.p1.y), Math.hypot(p.p2.x,p.p2.y), Math.hypot(p.p3.x,p.p3.y)); 
+      }));
+    } else {
+      this.collR = def.collisionRadius(this.r);
+      this.collOffset = def.collisionOffset ? def.collisionOffset(this.r) : {x:0, y:0};
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    this.shadowMaskParts = def.shadowMaskParts ? def.shadowMaskParts(this.r) : null;
+    this.collHalfExtents = def.collisionHalfExtents ? def.collisionHalfExtents(this.r) : (this.collHalfExtents || null);
+    
+    
+    
+    
+    
+    
+    
+    
+    this.entranceExtent = (this.collShape === 'box')
+      ? Math.hypot(this.collHalfExtents.hx, this.collHalfExtents.hy) 
+      : this.collR; 
+    this.repelVX = 0; this.repelVY = 0;
+    this.rippleVX = 0; this.rippleVY = 0;
+    
+    
+    
+    
+    
+    this.repelDirByPeer = new Map();
+    
+    
+    
+    
+    this.pinnedSinceT = null;
+    this.rotKick = 0;
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    const GAP_REFERENCE = 400, GAP_EXPONENT = 1.65, GAP_CAP_MS = 8000;
+    const GAP_WIDTH_MS = Math.min(GAP_CAP_MS, 1700 * Math.pow(Math.min(W, H) / GAP_REFERENCE, GAP_EXPONENT));
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    this.entranceDelayMs = (arrivalSlot === 0)
+      ? rand(0, 350)
+      : arrivalSlot * GAP_WIDTH_MS + rand(-GAP_WIDTH_MS * 0.10, GAP_WIDTH_MS * 0.10);
+    this.entranceStartT = null; 
+    this.lastUpdateT = null;    
+    this.invisiblePhaseDone = false;
+    this.id = nextToyId++;
+    this.reset();
+  }
+  reset() {
+    
+    
+    
+    
+    const edge = Math.floor(secureRandom()*4); 
+    const rotationSafeMargin = Math.max(this.w, this.h) * 0.6 + 40;
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    const visibilityMargin = Math.max(
+      this.collR + Math.abs(this.shadowOff.dx) + 20,
+      this.collR + Math.abs(this.shadowOff.dy) + 20,
+    ) + 40;
+    const margin = Math.max(rotationSafeMargin, visibilityMargin);
+    
+    
+    
+    
+    
+    const ext = this.entranceExtent;
+    
+    
+    
+    
+    
+    const xLo = Math.min(ext, W/2), xHi = Math.max(W-ext, W/2);
+    const yLo = Math.min(ext, H/2), yHi = Math.max(H-ext, H/2);
+    if (edge === 0)      { this.x = rand(xLo, xHi); this.y = -margin; }
+    else if (edge === 1) { this.x = W + margin;     this.y = rand(yLo, yHi); }
+    else if (edge === 2) { this.x = rand(xLo, xHi); this.y = H + margin; }
+    else                 { this.x = -margin;        this.y = rand(yLo, yHi); }
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    const depthPxX = ext + rand(W*0.05, W*0.11);
+    const depthPxY = ext + rand(H*0.05, H*0.11);
+    const lateralJitterX = rand(-W*0.06, W*0.06), lateralJitterY = rand(-H*0.06, H*0.06);
+    if (edge === 0)      { this.entranceTarget = { x: clamp(this.x + lateralJitterX, ext, W-ext), y: depthPxY }; }
+    else if (edge === 1) { this.entranceTarget = { x: W-depthPxX, y: clamp(this.y + lateralJitterY, ext, H-ext) }; }
+    else if (edge === 2) { this.entranceTarget = { x: clamp(this.x + lateralJitterX, ext, W-ext), y: H-depthPxY }; }
+    else                 { this.entranceTarget = { x: depthPxX, y: clamp(this.y + lateralJitterY, ext, H-ext) }; }
+    this.entranceD0 = Math.hypot(this.entranceTarget.x - this.x, this.entranceTarget.y - this.y) || 1;
+    this.entered = false;
+    this.enteringFade = false;
+    this.entranceStartT = null;     
+    this.lastUpdateT = null;
+    this.invisiblePhaseDone = false;
+
+    this.rotSpeed = rand(0.05, 0.11) * (Math.random() < 0.5 ? -1 : 1);
+    this.angle = rand(0, Math.PI*2);
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    this.driftAngleBase = rand(0, Math.PI*2);
+    this.driftAngleAmp1 = rand(0.8, 1.6);
+    this.driftAngleFreq1 = 2*Math.PI / rand(90000, 160000);
+    this.driftAnglePhase1 = rand(0, Math.PI*2);
+    this.driftAngleAmp2 = rand(0.3, 0.7);
+    this.driftAngleFreq2 = 2*Math.PI / rand(90000, 160000);
+    this.driftAnglePhase2 = rand(0, Math.PI*2);
+    this.driftSpeedFreq = 2*Math.PI / rand(90000, 160000);
+    this.driftSpeedPhase = rand(0, Math.PI*2);
+  }
+  update(dt, t) {
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    const realDt = this.lastUpdateT === null ? dt : Math.min(10, Math.max(0, (t - this.lastUpdateT) / 1000));
+    this.lastUpdateT = t;
+
+    const { u, v } = toyDriftVelocity(this, t);
+    let vx = u, vy = v;
+
+    
+    
+    
+    
+    
+    const marginX = this.collR + Math.abs(this.shadowOff.dx) + 20;
+    const marginY = this.collR + Math.abs(this.shadowOff.dy) + 20;
+    const outsideMargin = Math.max(
+      (-marginX) - this.x, this.x - (W + marginX),
+      (-marginY) - this.y, this.y - (H + marginY),
+      0,
+    );
+    const RESCUE_SPEED = 220; 
+    const DECEL_ZONE = taperDecelZone();    
+
+    
+    
+    
+    
+    if (this.entranceStartT === null) this.entranceStartT = t + this.entranceDelayMs;
+    if (!this.entered && t < this.entranceStartT) {
+      this.angle += this.rotSpeed * dt; 
+      return;
+    }
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    if (!this.entered && !this.invisiblePhaseDone) {
+      if (outsideMargin > 0) {
+        const INVISIBLE_SPEED = 480; 
+        
+        
+        
+        
+        
+        const ENTRANCE_DECEL_ZONE = taperDecelZone();
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        const sinceWaitEndedMs = Math.max(0, t - this.entranceStartT);
+        const effectiveDt = Math.min(realDt, sinceWaitEndedMs / 1000);
+        const crossed = advanceOffScreenApproach(this, t2 => t2.entranceTarget, marginX, marginY, u, v, INVISIBLE_SPEED, ENTRANCE_DECEL_ZONE, flowMaxSpeed, effectiveDt, W, H);
+        this.angle += this.rotSpeed * dt;
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        if (crossed) this.invisiblePhaseDone = true;
+        return;
+      }
+      
+      
+      this.invisiblePhaseDone = true;
+    }
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    const SETTLE_RECOVERY_THRESHOLD = 60; 
+    if ((this.entered && outsideMargin > 0) || (!this.entered && outsideMargin > SETTLE_RECOVERY_THRESHOLD)) {
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      advanceOffScreenApproach(this, t2 => ({x: Math.max(0, Math.min(W, t2.x)), y: Math.max(0, Math.min(H, t2.y))}), marginX, marginY, u, v, RESCUE_SPEED, DECEL_ZONE, flowMaxSpeed, realDt, W, H);
+      this.angle += (this.rotSpeed + this.rotKick) * dt;
+      const decay = Math.pow(0.55, dt);
+      this.rippleVX *= decay; this.rippleVY *= decay;
+      this.rotKick *= decay;
+      
+      
+      
+      
+      
+      
+      return;
+    }
+
+    if (!this.entered) {
+      const dx = this.entranceTarget.x - this.x, dy = this.entranceTarget.y - this.y;
+      const dist = Math.hypot(dx, dy) || 0.0001;
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      const factor = Math.max(0.40, Math.min(1, dist / this.entranceD0));
+
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      if (!this.enteringFade && dist < Math.max(this.entranceD0 * 0.08, 22)) {
+        this.enteringFade = true;
+        this.enteringFadeStartT = t;
+      }
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      let biasStrength = 3.0;
+      if (this.enteringFade) {
+        const ENTRANCE_FADE_MS = 1800;
+        const fadeFrac = Math.max(0, 1 - (t - this.enteringFadeStartT) / ENTRANCE_FADE_MS);
+        biasStrength *= fadeFrac;
+        if (fadeFrac <= 0) this.entered = true;
+      }
+      const biasMag = flowMaxSpeed * biasStrength * factor;
+      vx += (dx/dist) * biasMag;
+      vy += (dy/dist) * biasMag;
+    }
+
+    
+    
+    
+    
+    vx += this.repelVX; vy += this.repelVY;
+    vx += this.rippleVX; vy += this.rippleVY;
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    const repelActive = Math.hypot(this.repelVX, this.repelVY) > 0.01;
+    const speedCap = repelActive ? flowMaxSpeed * 0.8 : flowMaxSpeed;
+    const speed = Math.hypot(vx, vy);
+    if (speed > speedCap) {
+      const s = speedCap / speed;
+      vx *= s; vy *= s;
+    }
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    if (!this.entered && outsideMargin <= 0) {
+      const PIN_ESCAPE_MS = 3000;
+      const rawVx = vx, rawVy = vy;
+      const minVx = (-marginX - this.x) / dt, maxVx = (W + marginX - this.x) / dt;
+      const minVy = (-marginY - this.y) / dt, maxVy = (H + marginY - this.y) / dt;
+      let clampedVx = vx, clampedVy = vy, pinned = false;
+      if (clampedVx < minVx) { clampedVx = minVx; pinned = true; }
+      if (clampedVx > maxVx) { clampedVx = maxVx; pinned = true; }
+      if (clampedVy < minVy) { clampedVy = minVy; pinned = true; }
+      if (clampedVy > maxVy) { clampedVy = maxVy; pinned = true; }
+
+      if (pinned) {
+        if (this.pinnedSinceT === null) this.pinnedSinceT = t;
+        if (t - this.pinnedSinceT > PIN_ESCAPE_MS) {
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          vx = rawVx; vy = rawVy;
+          this.pinnedSinceT = null;
+        } else {
+          vx = clampedVx; vy = clampedVy;
+        }
+      } else {
+        this.pinnedSinceT = null;
+      }
+    }
+
+    this.x += vx * dt;
+    this.y += vy * dt;
+    this.angle += (this.rotSpeed + this.rotKick) * dt;
+
+    
+    const decay = Math.pow(0.55, dt);
+    this.rippleVX *= decay; this.rippleVY *= decay;
+    this.rotKick *= decay;
+  }
+  collCenter() {
+    const ca = Math.cos(this.angle), sa = Math.sin(this.angle);
+    const ox = this.collOffset.x, oy = this.collOffset.y;
+    return { x: this.x + ox*ca - oy*sa, y: this.y + ox*sa + oy*ca };
+  }
+  drawShadow(layerCtx) {
+    layerCtx.save();
+    layerCtx.translate(this.x + this.shadowOff.dx, this.y + this.shadowOff.dy);
+    layerCtx.rotate(this.angle);
+    layerCtx.drawImage(this.shadowCanvas, Math.round(-this.sw/2), Math.round(-this.sh/2));
+    layerCtx.restore();
+  }
+  drawBody(ctx, t) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+    ctx.drawImage(this.canvas, Math.round(-this.w/2), Math.round(-this.h/2));
+    ctx.restore();
+  }
+}
+
+let bgCanvas = document.createElement('canvas');
+function drawDrain(b, cx, cy) {
+  b.save();
+  const recessR = 25;
+  const recessGrad = b.createRadialGradient(cx, cy, recessR*0.5, cx, cy, recessR+5);
+  recessGrad.addColorStop(0, 'rgba(0,20,38,0.0)'); recessGrad.addColorStop(1, 'rgba(0,20,38,0.30)');
+  b.fillStyle = recessGrad;
+  b.beginPath(); b.arc(cx, cy, recessR+5, 0, Math.PI*2); b.fill();
+  const grateR = 22;
+  const grateGrad = b.createRadialGradient(cx-4, cy-4, 0, cx, cy, grateR);
+  grateGrad.addColorStop(0, 'rgb(148,185,190)'); grateGrad.addColorStop(0.6, 'rgb(130,170,178)'); grateGrad.addColorStop(1, 'rgb(112,155,165)');
+  b.fillStyle = grateGrad;
+  b.beginPath(); b.arc(cx, cy, grateR, 0, Math.PI*2); b.fill();
+  b.strokeStyle = 'rgb(95,140,152)'; b.lineWidth = 2;
+  b.beginPath(); b.arc(cx, cy, grateR, 0, Math.PI*2); b.stroke();
+  b.strokeStyle = 'rgba(30,80,100,0.55)'; b.lineWidth = 1.2;
+  for (const rr of [16, 11, 7]) { b.beginPath(); b.arc(cx, cy, rr, 0, Math.PI*2); b.stroke(); }
+  b.strokeStyle = 'rgba(30,80,100,0.45)'; b.lineWidth = 1;
+  for (let angle = 0; angle < Math.PI; angle += Math.PI/4) {
+    b.beginPath();
+    b.moveTo(cx+Math.cos(angle)*3, cy+Math.sin(angle)*3); b.lineTo(cx+Math.cos(angle)*19, cy+Math.sin(angle)*19);
+    b.moveTo(cx-Math.cos(angle)*3, cy-Math.sin(angle)*3); b.lineTo(cx-Math.cos(angle)*19, cy-Math.sin(angle)*19);
+    b.stroke();
+  }
+  b.fillStyle = 'rgb(155,192,198)';
+  b.beginPath(); b.arc(cx, cy, 3.5, 0, Math.PI*2); b.fill();
+  b.strokeStyle = 'rgba(60,110,125,0.6)'; b.lineWidth = 0.8;
+  b.beginPath(); b.arc(cx, cy, 3.5, 0, Math.PI*2); b.stroke();
+  b.restore();
+}
+function buildBackground() {
+  bgCanvas.width = W; bgCanvas.height = H;
+  const b = bgCanvas.getContext('2d');
+  const cx = W*0.5, cy = H*0.5, rad = Math.sqrt(cx*cx + cy*cy);
+  const g = b.createRadialGradient(cx, cy, 0, cx, cy, rad*0.85);
+  g.addColorStop(0, '#086b8e'); g.addColorStop(0.35, '#0d8db5'); g.addColorStop(0.7, '#17a8cc'); g.addColorStop(1, '#25c0d8');
+  b.fillStyle = g; b.fillRect(0, 0, W, H);
+
+  const TILE = 13, GROUT = 1;
+  const TILE_COLORS = ['#0a6e90', '#0d8aac', '#119bb8', '#16a7c8', '#1bb2d2', '#22bdd9', '#0c7fa0', '#149fbe'];
+  const ox = ((W % TILE) / 2) | 0, oy = ((H % TILE) / 2) | 0;
+  const fw = TILE - GROUT*2, fh = TILE - GROUT*2;
+  for (let col = -1; col*TILE < W+TILE; col++) {
+    for (let row = -1; row*TILE < H+TILE; row++) {
+      const fx = ox+col*TILE+GROUT, fy = oy+row*TILE+GROUT;
+      if (fw <= 0 || fh <= 0) continue;
+      const v = Math.sin(col*6.1 + row*10.7)*0.5 + 0.5;
+      const hraw = Math.sin(col*12.9898 + row*78.233) * 43758.5453;
+      const hv = hraw - Math.floor(hraw);
+      const tColor = TILE_COLORS[Math.floor(hv * TILE_COLORS.length)];
+      b.globalAlpha = 0.32; b.fillStyle = tColor; b.fillRect(fx, fy, fw, fh);
+      b.globalAlpha = 1;
+      b.fillStyle = `rgba(255,255,255,${0.03 + v*0.02})`; b.fillRect(fx, fy, fw, fh);
+      b.fillStyle = 'rgba(255,255,255,0.05)'; b.fillRect(fx, fy, fw, 1); b.fillRect(fx, fy, 1, fh);
+      b.fillStyle = 'rgba(0,25,45,0.06)'; b.fillRect(fx, fy+fh-1, fw, 1); b.fillRect(fx+fw-1, fy, 1, fh);
+    }
+  }
+  b.strokeStyle = 'rgba(210,240,248,0.11)'; b.lineWidth = GROUT;
+  for (let x = ox; x <= W+TILE; x += TILE) { b.beginPath(); b.moveTo(x, 0); b.lineTo(x, H); b.stroke(); }
+  for (let y = oy; y <= H+TILE; y += TILE) { b.beginPath(); b.moveTo(0, y); b.lineTo(W, y); b.stroke(); }
+
+  drawDrain(b, cx, cy);
+
+  const vr = Math.max(W, H) * 0.7;
+  const vg = b.createRadialGradient(cx, cy, vr*0.5, cx, cy, vr);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,15,30,0.22)');
+  b.fillStyle = vg; b.fillRect(0, 0, W, H);
+}
+
+const CAUSTIC_MARGIN = 2;
+let causticW, causticH, causticSpacing;
+let causticCanvas, causticCtx, causticImg;
+let causticPoints = [], causticCols = 0, causticRows = 0;
+
+function buildCaustics() {
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  causticW = Math.min(1800, Math.max(520, Math.round(W/1.2)));
+  causticH = Math.max(240, Math.round(causticW * H / W));
+  causticSpacing = 18 * (causticW / W); 
+
+  causticCanvas = document.createElement('canvas');
+  causticCanvas.width = causticW; causticCanvas.height = causticH;
+  causticCtx = causticCanvas.getContext('2d');
+  causticImg = causticCtx.createImageData(causticW, causticH);
+
+  causticCols = Math.ceil(causticW / causticSpacing) + CAUSTIC_MARGIN*2;
+  causticRows = Math.ceil(causticH / causticSpacing) + CAUSTIC_MARGIN*2;
+  causticPoints = [];
+  for (let col = 0; col < causticCols; col++) {
+    for (let row = 0; row < causticRows; row++) {
+      const worldX = (col - CAUSTIC_MARGIN + 0.5) * causticSpacing;
+      const worldY = (row - CAUSTIC_MARGIN + 0.5) * causticSpacing;
+      const jx = (secureRandom()-0.5) * causticSpacing;
+      const jy = (secureRandom()-0.5) * causticSpacing;
+      const angle = secureRandom() * Math.PI;
+      const stretch = 1.2 + secureRandom() * 0.9;
+      causticPoints.push({
+        bx: worldX+jx, by: worldY+jy, x: 0, y: 0,
+        driftAx: (secureRandom()-0.5) * causticSpacing * 0.30 * 3.5,
+        driftAy: (secureRandom()-0.5) * causticSpacing * 0.30 * 3.5,
+        driftFx: (0.00016 + secureRandom()*0.00020) * 1.2,
+        driftFy: (0.00016 + secureRandom()*0.00020) * 1.2,
+        driftPhx: secureRandom()*Math.PI*2, driftPhy: secureRandom()*Math.PI*2,
+        cos: Math.cos(angle), sin: Math.sin(angle), sx: stretch,
+      });
+    }
+  }
+}
+
+function envBrightness(nx, ny, t) {
+  const w1 = Math.sin(nx*2.1 + ny*1.4 + t*0.00028)*0.5 + 0.5;
+  const w2 = Math.sin(nx*1.3 - ny*2.6 + t*0.00019)*0.5 + 0.5;
+  const w3 = Math.sin(nx*3.2 + ny*0.8 - t*0.00023)*0.5 + 0.5;
+  return 0.35 + ((w1+w2+w3)/3.0) * 0.65;
+}
+
+function causticRasterCompute(w, h, causticSpacing, causticMargin, positions, stretches, cols, rows, t, dataOut) {
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  const NEIGHBOR_RADIUS = 1;
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const gc = Math.floor(i / causticSpacing) + causticMargin;
+      const gr = Math.floor(j / causticSpacing) + causticMargin;
+      let d1 = 1e9, d2 = 1e9;
+      for (let dc = -NEIGHBOR_RADIUS; dc <= NEIGHBOR_RADIUS; dc++) {
+        for (let dr = -NEIGHBOR_RADIUS; dr <= NEIGHBOR_RADIUS; dr++) {
+          const col = gc+dc, row = gr+dr;
+          if (col < 0 || col >= cols || row < 0 || row >= rows) continue;
+          const pi = col*rows + row;
+          const px = positions[pi*2], py = positions[pi*2+1];
+          const cosv = stretches[pi*3], sinv = stretches[pi*3+1], sxv = stretches[pi*3+2];
+          const dx = i - px, dy = j - py;
+          const lx =  dx*cosv + dy*sinv;
+          const ly = -dx*sinv + dy*cosv;
+          const dist = Math.sqrt((lx/sxv)*(lx/sxv) + ly*ly);
+          if (dist < d1) { d2 = d1; d1 = dist; } else if (dist < d2) { d2 = dist; }
+        }
+      }
+      const border = Math.min(1.0, (d2 - d1) / (causticSpacing * 0.5));
+      const interior = Math.pow(1.0 - border, 2.2);
+
+      const nx = i/w, ny = j/h;
+      const env = envBrightness(nx, ny, t);
+
+      const cv = interior * env;
+      const base = Math.pow(cv, 1.32) * 0.58;
+      const above = Math.max(0, cv - 0.78) / 0.22;
+      const peak = Math.pow(above, 2.4) * 0.95;
+      const bright = Math.min(1.0, base + peak);
+      const v = Math.round(bright * 255);
+
+      const idx = (j*w + i) * 4;
+      dataOut[idx] = v; dataOut[idx+1] = v; dataOut[idx+2] = v; dataOut[idx+3] = v;
+    }
+  }
+}
+
+function applyCausticShadowMask(d, w, h, toysList, screenW, screenH) {
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  for (const toy of toysList) {
+    const sx = toy.x + toy.shadowOff.dx, sy = toy.y + toy.shadowOff.dy;
+    let minX, maxX, minY, maxY, test;
+    if (toy.shadowMaskParts) {
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      const ca2 = Math.cos(toy.angle), sa2 = Math.sin(toy.angle);
+      const rot = (x, y) => ({ x: sx + x*ca2 - y*sa2, y: sy + x*sa2 + y*ca2 });
+      const parts = toy.shadowMaskParts.map(p => {
+        if (p.type === 'circle') { const w2 = rot(p.x, p.y); return { type:'circle', x:w2.x, y:w2.y, radius:p.radius }; }
+        if (p.type === 'annulus') {
+          const w2 = rot(p.x, p.y);
+          const holes = (p.holes || []).map(h => { const wh = rot(h.x, h.y); return { x:wh.x, y:wh.y, radius:h.radius }; });
+          return { type:'annulus', x:w2.x, y:w2.y, outer:p.outer, inner:p.inner, holes };
+        }
+        return { type:'polygon', points: p.points.map(pt => rot(pt.x, pt.y)) }; 
+      });
+      const reach = parts.map(p => {
+        if (p.type === 'circle') return { cx:p.x, cy:p.y, r:p.radius };
+        if (p.type === 'annulus') return { cx:p.x, cy:p.y, r:p.outer };
+        const cx = p.points.reduce((s,pt)=>s+pt.x,0)/p.points.length, cy = p.points.reduce((s,pt)=>s+pt.y,0)/p.points.length;
+        const r = Math.max(...p.points.map(pt => Math.hypot(pt.x-cx, pt.y-cy)));
+        return { cx, cy, r };
+      });
+      minX = Math.min(...reach.map(b => b.cx - b.r)); maxX = Math.max(...reach.map(b => b.cx + b.r));
+      minY = Math.min(...reach.map(b => b.cy - b.r)); maxY = Math.max(...reach.map(b => b.cy + b.r));
+      
+      
+      
+      test = (wx, wy) => parts.some((p, k) => {
+        const r2 = reach[k];
+        const ddx = wx-r2.cx, ddy = wy-r2.cy;
+        const d2 = ddx*ddx + ddy*ddy;
+        if (d2 > r2.r*r2.r) return false;
+        if (p.type === 'circle') return true; 
+        if (p.type === 'annulus') {
+          if (d2 < p.inner*p.inner) return false; 
+          
+          
+          for (const h of p.holes) { const hdx = wx-h.x, hdy = wy-h.y; if (hdx*hdx+hdy*hdy <= h.radius*h.radius) return false; }
+          return true;
+        }
+        return pointInPolygon({x:wx, y:wy}, p.points);
+      });
+    } else if (toy.collShape === 'circles') {
+      const ca = Math.cos(toy.angle), sa = Math.sin(toy.angle);
+      const circles = toy.collCircles.map(c => ({ x: sx + c.x*ca - c.y*sa, y: sy + c.x*sa + c.y*ca, r: c.radius }));
+      minX = Math.min(...circles.map(c => c.x - c.r)); maxX = Math.max(...circles.map(c => c.x + c.r));
+      minY = Math.min(...circles.map(c => c.y - c.r)); maxY = Math.max(...circles.map(c => c.y + c.r));
+      test = (wx, wy) => circles.some(c => (wx-c.x)*(wx-c.x) + (wy-c.y)*(wy-c.y) <= c.r*c.r);
+    } else if (toy.collShape === 'boxes') {
+      const ca = Math.cos(toy.angle), sa = Math.sin(toy.angle);
+      const boxes = toy.collBoxes.map(b => ({ cx: sx + b.x*ca - b.y*sa, cy: sy + b.x*sa + b.y*ca, hx: b.hx, hy: b.hy }));
+      const reach = boxes.map(b => Math.hypot(b.hx, b.hy)); 
+      minX = Math.min(...boxes.map((b,k) => b.cx - reach[k])); maxX = Math.max(...boxes.map((b,k) => b.cx + reach[k]));
+      minY = Math.min(...boxes.map((b,k) => b.cy - reach[k])); maxY = Math.max(...boxes.map((b,k) => b.cy + reach[k]));
+      const angle = toy.angle, cosA = Math.cos(-angle), sinA = Math.sin(-angle);
+      
+      
+      
+      
+      test = (wx, wy) => boxes.some(b => {
+        const lx = (wx-b.cx)*cosA - (wy-b.cy)*sinA, ly = (wx-b.cx)*sinA + (wy-b.cy)*cosA;
+        return Math.abs(lx) <= b.hx && Math.abs(ly) <= b.hy;
+      });
+    } else {
+      const r = toy.collR;
+      minX = sx - r; maxX = sx + r; minY = sy - r; maxY = sy + r;
+      test = (wx, wy) => (wx-sx)*(wx-sx) + (wy-sy)*(wy-sy) <= r*r;
+    }
+    const ri0 = Math.max(0, Math.floor(minX/screenW*w)), ri1 = Math.min(w-1, Math.ceil(maxX/screenW*w));
+    const rj0 = Math.max(0, Math.floor(minY/screenH*h)), rj1 = Math.min(h-1, Math.ceil(maxY/screenH*h));
+    for (let j = rj0; j <= rj1; j++) {
+      for (let i = ri0; i <= ri1; i++) {
+        if (test(i/w*screenW, j/h*screenH)) {
+          const idx = (j*w+i)*4;
+          d[idx]=0; d[idx+1]=0; d[idx+2]=0; d[idx+3]=0;
+        }
+      }
+    }
+  }
+}
+
+function drawCaustics(t) {
+  for (const p of causticPoints) {
+    p.x = p.bx + p.driftAx * Math.sin(t*p.driftFx + p.driftPhx);
+    p.y = p.by + p.driftAy * Math.sin(t*p.driftFy + p.driftPhy);
+  }
+  const positions = new Float32Array(causticPoints.length * 2);
+  const stretches = new Float32Array(causticPoints.length * 3);
+  for (let i = 0; i < causticPoints.length; i++) {
+    const p = causticPoints[i];
+    positions[i*2] = p.x; positions[i*2+1] = p.y;
+    stretches[i*3] = p.cos; stretches[i*3+1] = p.sin; stretches[i*3+2] = p.sx;
+  }
+  causticRasterCompute(causticW, causticH, causticSpacing, CAUSTIC_MARGIN, positions, stretches, causticCols, causticRows, t, causticImg.data);
+  applyCausticShadowMask(causticImg.data, causticW, causticH, toys, W, H);
+  causticCtx.putImageData(causticImg, 0, 0);
+}
+
+const CAUSTIC_WORKER_SRC = `
+${envBrightness.toString()}
+${causticRasterCompute.toString()}
+self.onmessage = function(e) {
+  const { w, h, causticSpacing, causticMargin, positions, stretches, cols, rows, t } = e.data;
+  const img = new ImageData(w, h);
+  causticRasterCompute(w, h, causticSpacing, causticMargin, positions, stretches, cols, rows, t, img.data);
+  self.postMessage({ type: 'frame', img }, [img.data.buffer]);
+};
+`;
+
+let causticWorker = null;
+let causticWorkerBusy = false;
+let latestCausticRaster = null; 
+
+function initCausticWorker() {
+  
+  
+  
+  
+  
+  if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) return;
+  try {
+    const blob = new Blob([CAUSTIC_WORKER_SRC], { type: 'application/javascript' });
+    causticWorker = new Worker(URL.createObjectURL(blob));
+    causticWorker.onmessage = function(e) {
+      if (e.data.type === 'frame') {
+        latestCausticRaster = e.data.img;
+        causticWorkerBusy = false;
+      }
+    };
+  } catch (err) {
+    causticWorker = null; 
+  }
+}
+
+function __setCausticWorkerForTest(fakeWorker) {
+  causticWorker = fakeWorker;
+  causticWorkerBusy = false;
+  latestCausticRaster = null;
+  causticWorker.onmessage = function(e) {
+    if (e.data.type === 'frame') {
+      latestCausticRaster = e.data.img;
+      causticWorkerBusy = false;
+    }
+  };
+}
+
+function requestCausticFrame(t) {
+  for (const p of causticPoints) {
+    p.x = p.bx + p.driftAx * Math.sin(t*p.driftFx + p.driftPhx);
+    p.y = p.by + p.driftAy * Math.sin(t*p.driftFy + p.driftPhy);
+  }
+
+  if (causticWorker && !causticWorkerBusy) {
+    causticWorkerBusy = true;
+    const positions = new Float32Array(causticPoints.length * 2);
+    const stretches = new Float32Array(causticPoints.length * 3);
+    for (let i = 0; i < causticPoints.length; i++) {
+      const p = causticPoints[i];
+      positions[i*2] = p.x; positions[i*2+1] = p.y;
+      stretches[i*3] = p.cos; stretches[i*3+1] = p.sin; stretches[i*3+2] = p.sx;
+    }
+    causticWorker.postMessage(
+      { w: causticW, h: causticH, causticSpacing, causticMargin: CAUSTIC_MARGIN, positions, stretches, cols: causticCols, rows: causticRows, t },
+      [positions.buffer, stretches.buffer]
+    );
+  }
+
+  if (latestCausticRaster) {
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    if (latestCausticRaster.data.length === causticImg.data.length) {
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      causticImg.data.set(latestCausticRaster.data);
+      applyCausticShadowMask(causticImg.data, causticW, causticH, toys, W, H);
+      causticCtx.putImageData(causticImg, 0, 0);
+    }
+  }
+  
+  
+  
+  
+}
+
+let nextToyId = 0;
+const RIPPLE_SPEED = 80;         
+const RIPPLE_LIFE_MS = 900;      
+const RIPPLE_RING_COUNT = 3;     
+const RIPPLE_RING_SPACING = 10;  
+let ripples = [];
+
+canvas.addEventListener('pointerdown', (e) => {
+  const cx = e.clientX, cy = e.clientY;
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  const NEAR_BUFFER = 18;
+  let hit = null, hitProximity = 0;
+  for (const toy of toys) {
+    const surfaceDist = toySurfaceDist(toy, cx, cy);
+    if (surfaceDist < NEAR_BUFFER) {
+      const proximity = 1 - Math.max(0, surfaceDist) / NEAR_BUFFER; 
+      if (proximity > hitProximity) { hit = toy; hitProximity = proximity; }
+    }
+  }
+
+  if (hit) {
+    const c = hit.collCenter();
+    const dx = c.x - cx, dy = c.y - cy;
+    const dist = Math.hypot(dx, dy) || 1;
+    const impulse = flowMaxSpeed * (2.0 + 2.5 * hitProximity);
+    hit.rippleVX += (dx/dist) * impulse;
+    hit.rippleVY += (dy/dist) * impulse;
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    if (!hit.entered && !hit.enteringFade) {
+      hit.enteringFade = true;
+      hit.enteringFadeStartT = performance.now();
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    let kickMag = rand(1.4, 2.4) * (0.5 + 0.5*hitProximity);
+    if (hit.collShape !== 'circle') {
+      
+      
+      const reach = hit.collShape === 'box' ? Math.max(hit.collHalfExtents.hx, hit.collHalfExtents.hy) : hit.collR;
+      const maxKick = (flowMaxSpeed * 2.5) / reach;
+      kickMag = Math.min(kickMag, maxKick);
+    }
+    hit.rotKick += (Math.random() < 0.5 ? -1 : 1) * kickMag;
+  } else {
+    ripples.push({ x: cx, y: cy, startT: performance.now(), hitToys: new Set() });
+  }
+  if (ripples.length > 6) ripples.shift();
+});
+
+function drawRipples(ctx, t) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = '#eafcff';
+  for (const r of ripples) {
+    const age = Math.max(0, t - r.startT);
+    const lifeFrac = age / RIPPLE_LIFE_MS;
+    if (lifeFrac >= 1) continue;
+    const waveR = RIPPLE_SPEED * (age/1000);
+    const fadeOut = 1 - lifeFrac;
+    for (let i = 0; i < RIPPLE_RING_COUNT; i++) {
+      const radius = waveR - i * RIPPLE_RING_SPACING;
+      if (radius <= 0) continue;
+      ctx.globalAlpha = fadeOut * 0.30 * (1 - i*0.3);
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, radius, 0, Math.PI*2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+function drawRipplesIntoCaustics(t) {
+  const s = causticW / W;
+  causticCtx.save();
+  causticCtx.globalCompositeOperation = 'lighter';
+  causticCtx.strokeStyle = '#ffffff';
+  for (const r of ripples) {
+    const age = Math.max(0, t - r.startT);
+    const lifeFrac = age / RIPPLE_LIFE_MS;
+    if (lifeFrac >= 1) continue;
+    const waveR = RIPPLE_SPEED * (age/1000);
+    const fadeOut = 1 - lifeFrac;
+    causticCtx.globalAlpha = fadeOut * 0.4;
+    causticCtx.lineWidth = 2.2;
+    causticCtx.beginPath();
+    causticCtx.arc(r.x*s, r.y*s, Math.max(1, waveR*s), 0, Math.PI*2);
+    causticCtx.stroke();
+  }
+  causticCtx.restore();
+}
+
+let toys = [];
+const shadowLayer = document.createElement('canvas');
+const shadowLayerCtx = shadowLayer.getContext('2d');
+const REPULSION_K = 6; 
+function selectToys() {
+  const n = toyCountForWidth(W);
+  const keys = pickToyKeys(n);
+  
+  
+  
+  
+  const slots = keys.map((_, i) => i);
+  for (let i = slots.length - 1; i > 0; i--) {
+    const j = Math.floor(secureRandom() * (i + 1));
+    [slots[i], slots[j]] = [slots[j], slots[i]];
+  }
+  toys = keys.map((key, i) => new Toy(key, slots[i], n));
+}
+function resizeAll() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  buildBackground();
+  buildFlowField();
+  buildCaustics();
+  shadowLayer.width = W; shadowLayer.height = H;
+  selectToys();
+}
+resizeAll();
+window.addEventListener('resize', resizeAll);
+initCausticWorker(); 
+
+function closestSepFromBox(boxCenter, boxAngle, hx, hy, point) {
+  const dx0 = point.x - boxCenter.x, dy0 = point.y - boxCenter.y;
+  const ca = Math.cos(-boxAngle), sa = Math.sin(-boxAngle);
+  const lx = dx0*ca - dy0*sa, ly = dx0*sa + dy0*ca;
+  const cx = Math.max(-hx, Math.min(hx, lx)), cy = Math.max(-hy, Math.min(hy, ly));
+  const ca2 = Math.cos(boxAngle), sa2 = Math.sin(boxAngle);
+  const wx = boxCenter.x + (cx*ca2 - cy*sa2), wy = boxCenter.y + (cx*sa2 + cy*ca2);
+  const ddx = point.x - wx, ddy = point.y - wy;
+  const dist = Math.hypot(ddx, ddy);
+  if (dist < 1e-4) {
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    let fdx = dx0, fdy = dy0;
+    if (Math.hypot(fdx, fdy) < 1e-4) { fdx = 1; fdy = 0; } 
+    const fdist = Math.hypot(fdx, fdy);
+    return { dist, nx: fdx/fdist, ny: fdy/fdist };
+  }
+  return { dist, nx: ddx/dist, ny: ddy/dist };
+}
+
+function closestSepFromCapsule(p1, p2, radius, point) {
+  const abx = p2.x - p1.x, aby = p2.y - p1.y;
+  const abLenSq = abx*abx + aby*aby;
+  let t = 0;
+  if (abLenSq > 1e-9) {
+    t = ((point.x-p1.x)*abx + (point.y-p1.y)*aby) / abLenSq;
+    t = Math.max(0, Math.min(1, t));
+  }
+  const cx = p1.x + abx*t, cy = p1.y + aby*t; 
+  const ddx = point.x - cx, ddy = point.y - cy;
+  const segDist = Math.hypot(ddx, ddy);
+  const dist = Math.max(0, segDist - radius); 
+  if (segDist < 1e-4) {
+    
+    
+    
+    
+    
+    
+    let fdx = -aby, fdy = abx; 
+    if (Math.hypot(fdx, fdy) < 1e-4) { fdx = 1; fdy = 0; }
+    const flen = Math.hypot(fdx, fdy);
+    return { dist, nx: fdx/flen, ny: fdy/flen };
+  }
+  return { dist, nx: ddx/segDist, ny: ddy/segDist };
+}
+
+function closestSepFromTriangle(p1, p2, p3, point) {
+  function closestOnSeg(a, b, p) {
+    const abx = b.x-a.x, aby = b.y-a.y;
+    const ab2 = abx*abx + aby*aby;
+    let t = 0;
+    if (ab2 > 1e-9) { t = ((p.x-a.x)*abx + (p.y-a.y)*aby) / ab2; t = Math.max(0, Math.min(1, t)); }
+    return { x: a.x+abx*t, y: a.y+aby*t };
+  }
+  
+  
+  
+  
+  function sign(a, b, p) { return (b.x-a.x)*(p.y-a.y) - (b.y-a.y)*(p.x-a.x); }
+  const s1 = sign(p1,p2,point), s2 = sign(p2,p3,point), s3 = sign(p3,p1,point);
+  const inside = !((s1<0||s2<0||s3<0) && (s1>0||s2>0||s3>0));
+
+  
+  
+  
+  
+  const ccx = (p1.x+p2.x+p3.x)/3, ccy = (p1.y+p2.y+p3.y)/3;
+  function centroidFallback(dist) {
+    let fdx = point.x-ccx, fdy = point.y-ccy;
+    if (Math.hypot(fdx, fdy) < 1e-4) { fdx = 1; fdy = 0; }
+    const flen = Math.hypot(fdx, fdy);
+    return { dist, nx: fdx/flen, ny: fdy/flen };
+  }
+
+  if (inside) return centroidFallback(0); 
+
+  const candidates = [closestOnSeg(p1,p2,point), closestOnSeg(p2,p3,point), closestOnSeg(p3,p1,point)];
+  let best = candidates[0], dist = Math.hypot(point.x-best.x, point.y-best.y);
+  for (let i = 1; i < 3; i++) {
+    const d = Math.hypot(point.x-candidates[i].x, point.y-candidates[i].y);
+    if (d < dist) { dist = d; best = candidates[i]; }
+  }
+  if (dist < 1e-4) return centroidFallback(dist); 
+  const ddx = point.x-best.x, ddy = point.y-best.y;
+  return { dist, nx: ddx/dist, ny: ddy/dist };
+}
+
+function distFromPointToPart(point, part) {
+  if (part.type === 'circle') {
+    const dx = point.x-part.x, dy = point.y-part.y;
+    const d = Math.hypot(dx, dy);
+    const dist = Math.max(0, d - part.radius);
+    if (d < 1e-4) return { dist, nx: 1, ny: 0 };
+    return { dist, nx: dx/d, ny: dy/d };
+  }
+  if (part.type === 'capsule') {
+    return closestSepFromCapsule({x:part.x1,y:part.y1}, {x:part.x2,y:part.y2}, part.radius, point);
+  }
+  if (part.type === 'triangle') {
+    return closestSepFromTriangle(part.p1, part.p2, part.p3, point);
+  }
+  return closestSepFromBox({x:part.cx,y:part.cy}, part.angle, part.hx, part.hy, point); 
+}
+
+function partSamplePoints(part) {
+  if (part.type === 'circle') return [{x:part.x, y:part.y, radius:part.radius}];
+  if (part.type === 'capsule') {
+    const mx=(part.x1+part.x2)/2, my=(part.y1+part.y2)/2;
+    return [{x:part.x1,y:part.y1,radius:part.radius},{x:part.x2,y:part.y2,radius:part.radius},{x:mx,y:my,radius:part.radius}];
+  }
+  if (part.type === 'triangle') {
+    const {p1,p2,p3} = part;
+    const cx=(p1.x+p2.x+p3.x)/3, cy=(p1.y+p2.y+p3.y)/3;
+    return [{x:p1.x,y:p1.y,radius:0},{x:p2.x,y:p2.y,radius:0},{x:p3.x,y:p3.y,radius:0},{x:cx,y:cy,radius:0}];
+  }
+  const ca=Math.cos(part.angle), sa=Math.sin(part.angle); 
+  const corners = [[-part.hx,-part.hy],[part.hx,-part.hy],[part.hx,part.hy],[-part.hx,part.hy]]
+    .map(([lx,ly]) => ({x: part.cx+lx*ca-ly*sa, y: part.cy+lx*sa+ly*ca, radius:0}));
+  return [...corners, {x:part.cx, y:part.cy, radius:0}];
+}
+
+function signedDistFromPointToPart(point, part) {
+  if (part.type === 'circle') {
+    return Math.hypot(point.x-part.x, point.y-part.y) - part.radius;
+  }
+  if (part.type === 'capsule') {
+    const abx=part.x2-part.x1, aby=part.y2-part.y1, ab2=abx*abx+aby*aby;
+    let t = 0;
+    if (ab2 > 1e-9) { t = ((point.x-part.x1)*abx+(point.y-part.y1)*aby)/ab2; t = Math.max(0, Math.min(1, t)); }
+    const cx=part.x1+abx*t, cy=part.y1+aby*t;
+    return Math.hypot(point.x-cx, point.y-cy) - part.radius;
+  }
+  if (part.type === 'triangle') {
+    const {p1,p2,p3} = part;
+    function sign(a,b,p){ return (b.x-a.x)*(p.y-a.y) - (b.y-a.y)*(p.x-a.x); }
+    const s1=sign(p1,p2,point), s2=sign(p2,p3,point), s3=sign(p3,p1,point);
+    const inside = !((s1<0||s2<0||s3<0) && (s1>0||s2>0||s3>0));
+    if (!inside) return closestSepFromTriangle(p1,p2,p3,point).dist;
+    function closestOnSeg(a,b,p){const abx=b.x-a.x,aby=b.y-a.y,ab2=abx*abx+aby*aby;let t=ab2>1e-9?((p.x-a.x)*abx+(p.y-a.y)*aby)/ab2:0;t=Math.max(0,Math.min(1,t));return{x:a.x+abx*t,y:a.y+aby*t};}
+    const edges = [closestOnSeg(p1,p2,point), closestOnSeg(p2,p3,point), closestOnSeg(p3,p1,point)];
+    return -Math.min(...edges.map(e => Math.hypot(point.x-e.x, point.y-e.y)));
+  }
+  
+  const dx0=point.x-part.cx, dy0=point.y-part.cy;
+  const ca=Math.cos(-part.angle), sa=Math.sin(-part.angle);
+  const lx=dx0*ca-dy0*sa, ly=dx0*sa+dy0*ca;
+  if (Math.abs(lx) <= part.hx && Math.abs(ly) <= part.hy) {
+    return -Math.min(part.hx-Math.abs(lx), part.hy-Math.abs(ly));
+  }
+  return closestSepFromBox({x:part.cx,y:part.cy}, part.angle, part.hx, part.hy, point).dist;
+}
+
+function pointInPolygon(point, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const xi = points[i].x, yi = points[i].y, xj = points[j].x, yj = points[j].y;
+    if (((yi > point.y) !== (yj > point.y)) &&
+        (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function partsOverlap(partA, partB) {
+  if (partA.type === 'circle') {
+    
+    
+    
+    const r = distFromPointToPart({x:partA.x,y:partA.y}, partB);
+    return { overlap: partA.radius - r.dist, nx: -r.nx, ny: -r.ny };
+  }
+  if (partB.type === 'circle') {
+    
+    
+    
+    const r = distFromPointToPart({x:partB.x,y:partB.y}, partA);
+    return { overlap: partB.radius - r.dist, nx: r.nx, ny: r.ny };
+  }
+  let best = null;
+  for (const s of partSamplePoints(partA)) {
+    
+    
+    const r = distFromPointToPart(s, partB);
+    const overlap = s.radius - signedDistFromPointToPart(s, partB);
+    if (!best || overlap > best.overlap) best = { overlap, nx: -r.nx, ny: -r.ny };
+  }
+  for (const s of partSamplePoints(partB)) {
+    
+    
+    const r = distFromPointToPart(s, partA);
+    const overlap = s.radius - signedDistFromPointToPart(s, partA);
+    if (!best || overlap > best.overlap) best = { overlap, nx: r.nx, ny: r.ny };
+  }
+  return best;
+}
+
+function toyCollPartsWorld(toy) {
+  const ca = Math.cos(toy.angle), sa = Math.sin(toy.angle);
+  const rot = (x, y) => ({ x: toy.x + x*ca - y*sa, y: toy.y + x*sa + y*ca });
+  if (toy.collShape === 'parts') {
+    return toy.collParts.map(p => {
+      if (p.type === 'circle') { const w = rot(p.x, p.y); return { type:'circle', x:w.x, y:w.y, radius:p.radius }; }
+      if (p.type === 'capsule') {
+        const w1 = rot(p.x1,p.y1), w2 = rot(p.x2,p.y2);
+        return { type:'capsule', x1:w1.x, y1:w1.y, x2:w2.x, y2:w2.y, radius:p.radius };
+      }
+      const w1=rot(p.p1.x,p.p1.y), w2=rot(p.p2.x,p.p2.y), w3=rot(p.p3.x,p.p3.y); 
+      return { type:'triangle', p1:w1, p2:w2, p3:w3 };
+    });
+  }
+  if (toy.collShape === 'circles') {
+    return toy.collCircles.map(c => { const w = rot(c.x,c.y); return { type:'circle', x:w.x, y:w.y, radius:c.radius }; });
+  }
+  if (toy.collShape === 'boxes') {
+    return toy.collBoxes.map(b => { const w = rot(b.x,b.y); return { type:'box', cx:w.x, cy:w.y, angle:toy.angle, hx:b.hx, hy:b.hy }; });
+  }
+  if (toy.collShape === 'box') {
+    const c = toy.collCenter();
+    return [{ type:'box', cx:c.x, cy:c.y, angle:toy.angle, hx:toy.collHalfExtents.hx, hy:toy.collHalfExtents.hy }];
+  }
+  const c = toy.collCenter();
+  return [{ type:'circle', x:c.x, y:c.y, radius:toy.collR }];
+}
+
+function toySurfaceDist(toy, px, py) {
+  let best = Infinity;
+  for (const part of toyCollPartsWorld(toy)) {
+    const d = distFromPointToPart({x:px, y:py}, part).dist;
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+let lastT = null;
+function tick(t) {
+  if (lastT === null) lastT = t;
+  const dt = Math.min(0.05, Math.max(0, (t - lastT) / 1000)); 
+  lastT = t;
+
+  
+  
+  
+  for (const toy of toys) { toy.repelVX = 0; toy.repelVY = 0; }
+  for (let i = 0; i < toys.length; i++) {
+    for (let j = i+1; j < toys.length; j++) {
+      const a = toys[i], b = toys[j];
+
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      if ((!a.entered && !a.invisiblePhaseDone) || (!b.entered && !b.invisiblePhaseDone)) continue;
+
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      const centreDist = Math.hypot(a.x-b.x, a.y-b.y);
+      if (centreDist > a.collR + b.collR) continue;
+
+      let best = null; 
+      let sumX = 0, sumY = 0; 
+
+      
+      
+      
+      
+      
+      
+      
+      
+      const partsA = toyCollPartsWorld(a), partsB = toyCollPartsWorld(b);
+      for (const pa of partsA) {
+        for (const pb of partsB) {
+          const res = partsOverlap(pa, pb);
+          if (res.overlap > 0) {
+            sumX += res.nx * res.overlap;
+            sumY += res.ny * res.overlap;
+            if (!best || res.overlap > best.overlap) best = res;
+          }
+        }
+      }
+
+      if (best) {
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        const len = Math.hypot(sumX, sumY);
+        const rawNx = len > 1e-6 ? sumX/len : best.nx;
+        const rawNy = len > 1e-6 ? sumY/len : best.ny;
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        const REPEL_DIR_RETAIN = 0.02; 
+        const prevDir = a.repelDirByPeer.get(b);
+        let nx, ny;
+        if (prevDir) {
+          const retain = Math.pow(REPEL_DIR_RETAIN, dt);
+          const bx = prevDir.nx*retain + rawNx*(1-retain);
+          const by = prevDir.ny*retain + rawNy*(1-retain);
+          const blen = Math.hypot(bx, by) || 1;
+          nx = bx/blen; ny = by/blen;
+        } else {
+          nx = rawNx; ny = rawNy; 
+        }
+        a.repelDirByPeer.set(b, {nx, ny});
+
+        const push = best.overlap * REPULSION_K;
+        a.repelVX -= nx*push; a.repelVY -= ny*push;
+        b.repelVX += nx*push; b.repelVY += ny*push;
+      } else {
+        
+        
+        
+        a.repelDirByPeer.delete(b);
+      }
+    }
+  }
+
+  
+  ripples = ripples.filter(r => Math.max(0, t - r.startT) < RIPPLE_LIFE_MS);
+  for (const r of ripples) {
+    const age = Math.max(0, t - r.startT);
+    const waveR = RIPPLE_SPEED * (age/1000);
+    const strengthFrac = 1 - age/RIPPLE_LIFE_MS;
+    for (const toy of toys) {
+      if (r.hitToys.has(toy.id)) continue;
+      const tc = toy.collCenter();
+      const dx = tc.x - r.x, dy = tc.y - r.y;
+      const dist = Math.hypot(dx, dy) || 0.0001;
+      
+      
+      
+      
+      
+      const margin = toy.r * 0.4;
+      if (waveR + margin >= toySurfaceDist(toy, r.x, r.y)) {
+        r.hitToys.add(toy.id);
+        
+        
+        const impulse = flowMaxSpeed * 1.6 * strengthFrac;
+        toy.rippleVX += (dx/dist) * impulse;
+        toy.rippleVY += (dy/dist) * impulse;
+      }
+    }
+  }
+
+  for (const toy of toys) toy.update(dt, t);
+
+  ctx.drawImage(bgCanvas, 0, 0);
+
+  
+  
+  
+  
+  
+  
+  
+  shadowLayerCtx.clearRect(0, 0, W, H);
+  for (const toy of toys) toy.drawShadow(shadowLayerCtx);
+
+  requestCausticFrame(t);
+  drawRipplesIntoCaustics(t);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.88;
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  ctx.filter = 'blur(1px)';
+  ctx.drawImage(causticCanvas, 0, 0, W, H);
+  ctx.restore();
+
+  drawRipples(ctx, t);
+
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.drawImage(shadowLayer, 0, 0);
+  ctx.restore();
+
+  const drawOrder = toys.slice().sort((a, b) => a.y - b.y);
+  for (const toy of drawOrder) toy.drawBody(ctx);
+
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
